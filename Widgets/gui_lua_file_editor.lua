@@ -86,7 +86,6 @@ local keywords = {
     ["end"] = true,
     ["return"] = true,
 
-    ["function"] = true,
     ["goto"] = true,
     ["local"] = true
 }
