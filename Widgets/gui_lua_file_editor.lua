@@ -760,9 +760,38 @@ function widget:Initialize()
     function textEntry:KeyPress(key, mods, isRepeat)
         if key == 0x73 and mods.ctrl then 
             Save()
+        elseif key == 0x09 then
+            self:editTab()
         end
 
         return textEntry_KeyPress(self, key, mods, isRepeat)
+    end
+
+    function textEntry:editReturn(isCtrl)
+        local rawString = textEntry.text:GetRawString()
+        local clipped = rawString:sub(1, self.selectionBegin)
+        while true do
+            local lineStart, _, spaces, text = clipped:find("\n(%s*)([^\n]*)$")
+            
+            if not lineStart then
+                local spaces, text = clipped:match("^(%s*)([^\n]*)$")
+                self:InsertText("\n" .. spaces)
+                return
+            end
+
+            if text:len() > 0 then
+                self:InsertText("\n" .. spaces)
+                return
+            else
+                clipped = rawString:sub(1, lineStart - 1)
+            end
+        end 
+    end
+
+    function textEntry:editTab()
+        local rawString = textEntry.text:GetRawString()
+        local _, _, spaces = rawString:find("\n([ \t]+)[^\n^ ^\t]")
+        self:InsertText(spaces or "    ")
     end
 
     local function ReplaceEditFunction(name)
