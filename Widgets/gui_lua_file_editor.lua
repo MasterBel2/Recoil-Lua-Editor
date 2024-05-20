@@ -15,7 +15,7 @@ end
 ------------------------------------------------------------------------------------------------------------
 
 local MasterFramework
-local requiredFrameworkVersion = 40
+local requiredFrameworkVersion = 41
 local key
 
 ------------------------------------------------------------------------------------------------------------
@@ -23,6 +23,7 @@ local key
 ------------------------------------------------------------------------------------------------------------
 
 local math_max = math.max
+local math_min = math.min
 
 ------------------------------------------------------------------------------------------------------------
 -- Interface
@@ -307,6 +308,7 @@ end
 local fileName
 local filePath
 local showFullFilePath
+local shownError
 
 local tabBar
 
@@ -689,6 +691,7 @@ function ErrorDisplay()
     local errorDisplay
     errorDisplay = MasterFramework:Button(text, function()
         if errorDisplay.path then
+            shownError = false
             SelectFile(errorDisplay.path)
         end
     end)
@@ -833,6 +836,7 @@ function widget:Initialize()
     local errorHighlightRect = MasterFramework:Rect(function() return textEntryWidth end, function() return errorHighlightHeight end, nil, { MasterFramework:Color(1, 0, 0, 0.3) })
 
     local lineTitles = {}
+    local lineOffsets = {}
     local lineStarts, lineEnds
     local lineCount
 
@@ -910,6 +914,7 @@ function widget:Initialize()
                     errorWidth, errorHeight = errorHighlightRect:Layout(textEntryWidth, errorHighlightHeight)
                 end
             end
+            lineOffsets[i] = i + insertedNewlineCount
             lineTitles[i]._insertedNewlineCount = insertedNewlineCount
         end
 
@@ -924,7 +929,7 @@ function widget:Initialize()
         for i = 1, lineCount do
             local lineTitle = lineTitles[i]
             local width, _ = lineTitle:Size()
-            lineTitle:Position(rightX - width, topY - (i + lineTitle._insertedNewlineCount) * lineHeight)
+            lineTitle:Position(rightX - width, topY - lineOffsets[i] * lineHeight)
         end
         -- MasterFramework.endProfile("wrappingText:Position() - line numbers")
         -- MasterFramework.startProfile("wrappingText:Position()")
@@ -995,6 +1000,24 @@ function widget:Initialize()
         { title = "Errors", display = errorStack }
     })
 
+    local codeScrollContainer = MasterFramework:VerticalScrollContainer(textEntry)
+
+    local viewportLayout = codeScrollContainer.viewport.Layout
+    function codeScrollContainer.viewport:Layout(availableWidth, availableHeight)
+        local width, height = viewportLayout(self, availableWidth, availableHeight)
+
+        local error = errors[filePath]
+        if error and not shownError then
+            self.xOffset = 0
+            -- Because of paddings around the text view, if we didnt remove anything from the offset, the error would be partially off-screen!
+            -- More than that, we'll remove a few lines for context.
+            self.yOffset = math_max(0, math_min(self.contentHeight - height, (lineOffsets[error.line] - 5) * textEntry.text._readOnly_font:ScaledSize()))
+            shownError = true
+        end
+
+        return width, height
+    end
+
     local resizableFrame = MasterFramework:ResizableMovableFrame(
         "Lua File Editor",
         MasterFramework:PrimaryFrame(
@@ -1010,7 +1033,7 @@ function widget:Initialize()
                             }, 
                             MasterFramework:Dimension(8), 0.5
                         ),
-                        TakeAvailableWidth(TakeAvailableHeight(MasterFramework:VerticalScrollContainer(textEntry))),
+                        TakeAvailableWidth(TakeAvailableHeight(codeScrollContainer)),
                         MasterFramework:Rect(MasterFramework:Dimension(0), MasterFramework:Dimension(0)), 
                         0
                     ),
