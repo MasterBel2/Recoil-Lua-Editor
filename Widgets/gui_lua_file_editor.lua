@@ -157,12 +157,17 @@ local function lexStringLiteral(string, startIndex, terminator)
     local escaped
 
     while nextIndex <= string:len() do
+        local nextCharacter = string:sub(nextIndex, nextIndex)
         if escaped then
             escaped = false
-        elseif string:sub(nextIndex, nextIndex) == terminator then
-            return TOKEN_TYPE_STRING_LITERAL, startIndex - 1, nextIndex
-        elseif string:sub(nextIndex, nextIndex) == "\n" then
-            return TOKEN_TYPE_UNCLOSED_STRING_LITERAL, startIndex - 1, nextIndex
+        else
+            if nextCharacter == terminator then
+                return TOKEN_TYPE_STRING_LITERAL, startIndex - 1, nextIndex
+            elseif nextCharacter == "\n" then
+                return TOKEN_TYPE_UNCLOSED_STRING_LITERAL, startIndex - 1, nextIndex
+            elseif nextCharacter == "\\" then
+                escaped = true
+            end
         end
         nextIndex = nextIndex + 1
     end
