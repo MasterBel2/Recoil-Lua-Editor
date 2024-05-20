@@ -254,7 +254,7 @@ local function lex(string)
             end
 
         elseif character:find(numberLiteralPrimaryCharacterSet) then
-            local numberBegin, numberEnd = string:find("[%d_]*%.?[%d_]*") -- TODO: more fine-grained parsing, what if the decimal point is there, and nothing after it?
+            local numberBegin, numberEnd = string:find("[%d_]*[%.x]?[%d_]*", nextIndex) -- TODO: more fine-grained parsing, what if the decimal point is there, and nothing after it?
             if numberBegin == nextIndex then
                 addToken(TOKEN_TYPE_NUMBER_LITERAL, currentIndex, numberEnd)
                 nextIndex = numberEnd + 1
