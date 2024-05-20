@@ -768,6 +768,11 @@ function widget:Initialize()
     end
 
     function textEntry:editReturn(isCtrl)
+        if isCtrl then
+            self:InsertText("\n")
+            return
+        end
+
         local rawString = textEntry.text:GetRawString()
         local clipped = rawString:sub(1, self.selectionBegin)
         while true do
