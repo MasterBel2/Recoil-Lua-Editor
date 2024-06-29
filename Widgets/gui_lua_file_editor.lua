@@ -424,33 +424,6 @@ local tokenTypeColors = {
     [TOKEN_TYPE_ATTRIBUTE] = "\255\255\170\085",
 }
 
-local function FolderDisclosure(path, vfsMode)
-    local bodyVisible = false
-    local overall
-
-    local x = path:match("([%w%s%._&-]+)/?$")
-    local titleText = MasterFramework:Text(x)
-    overall = MasterFramework:VerticalStack(
-        {
-            MasterFramework:Button(titleText, function()
-                overall:SetBodyVisible(not bodyVisible)
-            end)
-        }
-    )
-
-    function overall:SetBodyVisible(visible)
-        if visible then
-            -- local subdirs = VFS.SubDirs(path, "*", vfsMode)
-
-            overall.members[2] = nil
-        else
-            overall.members[2] = nil
-        end
-        bodyVisible = visible
-    end
-
-    return overall
-end
 local function UIFileButton(path)
     local _fileName = path:match(fileNamePattern)
     local button = MasterFramework:Button(MasterFramework:Text(_fileName, editedFiles[path] and editedFileColor or savedFileColor), function()
