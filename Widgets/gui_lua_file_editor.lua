@@ -15,7 +15,7 @@ end
 ------------------------------------------------------------------------------------------------------------
 
 local MasterFramework
-local requiredFrameworkVersion = 41
+local requiredFrameworkVersion = "Dev"
 local key
 
 ------------------------------------------------------------------------------------------------------------
@@ -33,9 +33,6 @@ local function TakeAvailableHeight(body)
     local cachedHeight
     local cachedAvailableHeight
     return {
-        NeedsLayout = function()
-            return body:NeedsLayout()
-        end,
         Layout = function(_, availableWidth, availableHeight)
             local width, height = body:Layout(availableWidth, availableHeight)
             cachedHeight = height
@@ -47,9 +44,6 @@ local function TakeAvailableHeight(body)
 end
 local function TakeAvailableWidth(body)
     return {
-        NeedsLayout = function()
-            return body:NeedsLayout()
-        end,
         Layout = function(_, availableWidth, availableHeight)
             local _, height = body:Layout(availableWidth, availableHeight)
             return availableWidth, height
@@ -366,12 +360,12 @@ local function RevealPath(path)
 end
 
 local function MarkFileEdited(path, isEdited)
-    if (editedFiles[path] and isEdited) or ((not editedFiles[path]) and (not isEdited)) then
+    if not path or (editedFiles[path] and isEdited) or ((not editedFiles[path]) and (not isEdited)) then
         return
     end
     local pattern = "(.+/)[%w%s%._&-]+/?$"
     
-    fileButtons[path].visual.color = isEdited and editedFileColor or savedFileColor
+    fileButtons[path].visual:SetBaseColor(isEdited and editedFileColor or savedFileColor)
 
     local change = isEdited and 1 or -1
 
@@ -380,9 +374,9 @@ local function MarkFileEdited(path, isEdited)
         local menu = folderMenus[trimmedPath]
         menu.editedSubfileCount = menu.editedSubfileCount + change
         if isEdited then 
-            menu.title.color = editedFileColor
+            menu.title:SetBaseColor(editedFileColor)
         elseif menu.editedSubfileCount == 0 then
-            menu.title.color = savedFileColor
+            menu.title:SetBaseColor(savedFileColor)
         end 
         trimmedPath = trimmedPath:match(pattern)
     end
@@ -441,7 +435,7 @@ end
 local function UIFolderMenu(path)
     local folderMenu
     local contentsVisible = false
-    local spacing = MasterFramework:Dimension(2)
+    local spacing = MasterFramework:AutoScalingDimension(2)
 
     local checkBox = MasterFramework:CheckBox(12, function(_, checked)
         if checked then
@@ -464,12 +458,9 @@ local function UIFolderMenu(path)
         registeredChildren = nil
     end
 
-    folderMenu = MasterFramework:VerticalStack({
-            [1] = MasterFramework:HorizontalStack({ checkBox, title }, MasterFramework:Dimension(8), 0.5)
-        },
-        spacing,
-        0
-    )
+    local folderRow = MasterFramework:HorizontalStack({ checkBox, title }, MasterFramework:AutoScalingDimension(8), 0.5)
+
+    folderMenu = MasterFramework:VerticalStack({ folderRow }, spacing, 0)
 
     function folderMenu:Deregister()
         deregisterChildren()
@@ -477,21 +468,21 @@ local function UIFolderMenu(path)
     end
 
     function folderMenu:ShowChildren()
-        if not folderMenu.members[2] then
+        if not folderMenu:GetMembers()[2] then
             registeredChildren = table.joinArrays({ table.imap(VFS.SubDirs(path, "*", VFS.RAW), function(_, subDir) return UIFolderMenu(subDir) end), table.imap(VFS.DirList(path, "*", VFS.RAW), function(_, filePath) return UIFileButton(filePath) end) })
-            folderMenu.members[2] = MasterFramework:MarginAroundRect(
+            folderMenu:SetMembers({ folderRow, MasterFramework:MarginAroundRect(
                 MasterFramework:VerticalStack(registeredChildren, spacing, 0),
-                MasterFramework:Dimension(20),
-                MasterFramework:Dimension(0),
-                MasterFramework:Dimension(0),
-                MasterFramework:Dimension(0)
-            )
+                MasterFramework:AutoScalingDimension(20),
+                MasterFramework:AutoScalingDimension(0),
+                MasterFramework:AutoScalingDimension(0),
+                MasterFramework:AutoScalingDimension(0)
+            ) })
         end
         checkBox:SetChecked(true)
     end
     function folderMenu:HideChildren()
-        if self.members[2] then
-            self.members[2] = nil
+        if self:GetMembers()[2] then
+            folderMenu:SetMembers({ folderRow })
             deregisterChildren()
         end
         checkBox:SetChecked(false)
@@ -508,9 +499,9 @@ local function UIFolderMenu(path)
     end
 
     if folderMenu.editedSubfileCount == 0 then
-        title.color = savedFileColor
+        title:SetBaseColor(savedFileColor)
     else
-        title.color = editedFileColor
+        title:SetBaseColor(editedFileColor)
     end
 
     folderMenu.title = title
@@ -521,27 +512,28 @@ local function UIFolderMenu(path)
 end
 
 local function VerticalSplit(left, right, yAnchor, key)
-    local split = {}
+    local split = MasterFramework:Component(true, false)
     local isDragging
 
-    local minWidth = MasterFramework:Dimension(40)
+    local minWidth = MasterFramework:AutoScalingDimension(40)
 
-    local dividerWidth = MasterFramework:Dimension(2)
+    local dividerWidth = MasterFramework:AutoScalingDimension(2)
     local width, height
-    local dividerRect = MasterFramework:Rect(dividerWidth, function() return height end, nil, { MasterFramework.color.hoverColor })
+    local dividerRect = MasterFramework:Background(MasterFramework:Rect(dividerWidth, function() return height end), { MasterFramework.color.hoverColor }, nil)
 
     local previousScale = MasterFramework.combinedScaleFactor
 
     local dragStartX
     local dividerStartX
     local dividerX = (verticalSplitDividerXCache[key] or 100) * previousScale
-    local dividerMoved = true
+
+    local hoverColor = MasterFramework.color.hoverColor
 
     local divider = MasterFramework:MouseOverChangeResponder(
         MasterFramework:MousePressResponder(
             dividerRect,
             function(_, x)
-                dividerRect.decorations[1] = MasterFramework.color.pressColor
+                dividerRect:SetDecorations({ MasterFramework.color.pressColor })
                 isDragging = true
                 dragStartX = x
                 dividerStartX = dividerX
@@ -552,26 +544,23 @@ local function VerticalSplit(left, right, yAnchor, key)
                 dividerX = dividerStartX + dx
                 -- dividerX = math_max(math.min((minWidth() - dividerWidth()) / 2, dragStartX + dx), width - math.min((minWidth() - dividerWidth()) / 2))
                 verticalSplitDividerXCache[key] = dividerX / previousScale
-                dividerMoved = true
+                split:NeedsLayout()
             end,
             function()
-                dividerRect.decorations[1] = MasterFramework.color.hoverColor
+                dividerRect:SetDecorations({ hoverColor })
                 isDragging = false
             end
         ),
         function(isOver)
+            hoverColor = isOver and MasterFramework.color.selectedColor or MasterFramework.color.hoverColor
             if not isDragging then
-                dividerRect.decorations[1] = isOver and MasterFramework.color.selectedColor or MasterFramework.color.hoverColor
+                dividerRect:SetDecorations({ hoverColor })
             end
         end
     )
 
-    function split:NeedsLayout()
-        return dividerMoved or left:NeedsLayout() or right:NeedsLayout()
-    end
-
     function split:Layout(availableWidth, availableHeight)
-        dividerMoved = false
+        self:RegisterDrawingGroup()
         if previousScale ~= MasterFramework.combinedScaleFactor then
             dividerX = dividerX / previousScale * MasterFramework.combinedScaleFactor
             previousScale = MasterFramework.combinedScaleFactor
@@ -610,12 +599,13 @@ local function VerticalSplit(left, right, yAnchor, key)
 end
 
 local function TabBar(options)
+    local box = MasterFramework:Box(MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)))
     local body = MasterFramework:MarginAroundRect(
-        MasterFramework:Rect(MasterFramework:Dimension(0), MasterFramework:Dimension(0)),
-        MasterFramework:Dimension(0),
-        MasterFramework:Dimension(20),
-        MasterFramework:Dimension(0),
-        MasterFramework:Dimension(20)
+        box,
+        MasterFramework:AutoScalingDimension(0),
+        MasterFramework:AutoScalingDimension(20),
+        MasterFramework:AutoScalingDimension(0),
+        MasterFramework:AutoScalingDimension(20)
     )
 
     local buttons = table.imap(options, function(index, tab)
@@ -633,9 +623,9 @@ local function TabBar(options)
 
     local tabBar
     tabBar = MasterFramework:VerticalHungryStack(
-        MasterFramework:HorizontalStack(buttons, MasterFramework:Dimension(8), 1),
+        MasterFramework:HorizontalStack(buttons, MasterFramework:AutoScalingDimension(8), 1),
         TakeAvailableWidth(body),
-        MasterFramework:Rect(MasterFramework:Dimension(0), MasterFramework:Dimension(0)),
+        MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)),
         0.5
     )
 
@@ -643,11 +633,11 @@ local function TabBar(options)
     function tabBar:Select(index)
         if not buttons[index] then return end
         if lastSelectedButton then
-            lastSelectedButton.titleText.color = MasterFramework:Color(1, 1, 1, 1)
+            lastSelectedButton.titleText:SetBaseColor(MasterFramework:Color(1, 1, 1, 1))
         end
         lastSelectedButton = buttons[index]
-        buttons[index].titleText.color = MasterFramework:Color(0.3, 0.6, 1, 1)
-        body.rect = options[index].display
+        buttons[index].titleText:SetBaseColor(MasterFramework:Color(0.3, 0.6, 1, 1))
+        box:SetChild(options[index].display)
     end
 
     tabBar:Select(1)
@@ -724,14 +714,16 @@ function widget:Update()
     table.sort(errors, function(a, b)
         return a.name > b.name
     end)
-    errorStack.members = table.imap(errors, function(_, x) return x.display end)
+    errorStack:SetMembers(table.imap(errors, function(_, x) return x.display end))
 end
 
 function widget:Initialize()
-    MasterFramework = WG.MasterFramework[requiredFrameworkVersion]
+    MasterFramework = WG["MasterFramework " .. requiredFrameworkVersion]
     if not MasterFramework then
         error("[Lua File Editor] MasterFramework " .. requiredFrameworkVersion .. " not found!")
     end
+
+    table = MasterFramework.table
 
     local monospaceFont = MasterFramework:Font("fonts/monospaced/SourceCodePro-Medium.otf", 12)
 
@@ -785,8 +777,10 @@ function widget:Initialize()
         textEntry[name] = function(...)
             cachedFunction(...)
             
-            MarkFileEdited(filePath, true)
-            editedFiles[filePath] = textEntry.text:GetRawString()
+            if filePath then 
+                MarkFileEdited(filePath, true)
+                editedFiles[filePath] = textEntry.text:GetRawString() -- Would be nice to cache the `no file` case also?
+            end
 
             saveButton.visual:SetString("Save")
             revertButton.visual:SetString("Revert")
@@ -804,14 +798,14 @@ function widget:Initialize()
     
     local textHeight
     local codeNumbersWidth
-    local spacing = MasterFramework:Dimension(2)
+    local spacing = MasterFramework:AutoScalingDimension(2)
     local codeNumbersColor = MasterFramework:Color(0.2, 0.2, 0.2, 1)
 
     local textEntryWidth = 0
     local errorHighlightLineOffset = 0
     local errorHighlightHeight = 0
     
-    local errorHighlightRect = MasterFramework:Rect(function() return textEntryWidth end, function() return errorHighlightHeight end, nil, { MasterFramework:Color(1, 0, 0, 0.3) })
+    local errorHighlightRect = MasterFramework:Background(MasterFramework:Rect(function() return textEntryWidth end, function() return errorHighlightHeight end), { MasterFramework:Color(1, 0, 0, 0.3) }, nil)
 
     local lineTitles = {}
     local lineOffsets = {}
@@ -971,10 +965,11 @@ function widget:Initialize()
         editedFiles[filePath] = nil
     end)
 
-    errorStack = MasterFramework:VerticalStack({}, MasterFramework:Dimension(2), 0)
+    errorStack = MasterFramework:VerticalStack({}, MasterFramework:AutoScalingDimension(2), 0)
 
     tabBar = TabBar({
-        { title = "Files", display = MasterFramework:VerticalScrollContainer(UIFolderMenu(LUAUI_DIRNAME)) },
+        -- { title = "Files", display = MasterFramework:VerticalScrollContainer(UIFolderMenu(LUAUI_DIRNAME)) },
+        { title = "Files", display = UIFolderMenu(LUAUI_DIRNAME) },
         { title = "Errors", display = errorStack }
     })
 
@@ -999,35 +994,34 @@ function widget:Initialize()
     local resizableFrame = MasterFramework:ResizableMovableFrame(
         "Lua File Editor",
         MasterFramework:PrimaryFrame(
-            -- MasterFramework:Rasterizer(MasterFramework:MarginAroundRect(
-                MasterFramework:MarginAroundRect(
-                VerticalSplit(
-                    tabBar,
-                    MasterFramework:VerticalHungryStack(
-                        MasterFramework:HorizontalStack({
-                                fileNameDisplay,
-                                saveButton,
-                                revertButton
-                            }, 
-                            MasterFramework:Dimension(8), 0.5
+                MasterFramework:Background(
+                    MasterFramework:MarginAroundRect(
+                    VerticalSplit(
+                        tabBar,
+                        MasterFramework:VerticalHungryStack(
+                            MasterFramework:HorizontalStack({
+                                    fileNameDisplay,
+                                    saveButton,
+                                    revertButton
+                                }, 
+                                MasterFramework:AutoScalingDimension(8), 0.5
+                            ),
+                            TakeAvailableWidth(TakeAvailableHeight(codeScrollContainer)),
+                            MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)), 
+                            0
                         ),
-                        TakeAvailableWidth(TakeAvailableHeight(codeScrollContainer)),
-                        MasterFramework:Rect(MasterFramework:Dimension(0), MasterFramework:Dimension(0)), 
-                        0
+                        1,
+                        "Lua File Editor Split: Side Bar & Editor 1"
                     ),
-                    1,
-                    "Lua File Editor Split: Side Bar & Editor 1"
+                    MasterFramework:AutoScalingDimension(20),
+                    MasterFramework:AutoScalingDimension(20),
+                    MasterFramework:AutoScalingDimension(20),
+                    MasterFramework:AutoScalingDimension(20)
                 ),
-                MasterFramework:Dimension(20),
-                MasterFramework:Dimension(20),
-                MasterFramework:Dimension(20),
-                MasterFramework:Dimension(20),
                 { MasterFramework.FlowUIExtensions:Element() },
-                MasterFramework:Dimension(5),
-                false
+                MasterFramework:AutoScalingDimension(5)
             )
         ),
-        -- )),
         MasterFramework.viewportWidth * 0.1, MasterFramework.viewportHeight * 0.1, 
         MasterFramework.viewportWidth * 0.8, MasterFramework.viewportHeight * 0.8,
         false
