@@ -968,8 +968,7 @@ function widget:Initialize()
     errorStack = MasterFramework:VerticalStack({}, MasterFramework:AutoScalingDimension(2), 0)
 
     tabBar = TabBar({
-        -- { title = "Files", display = MasterFramework:VerticalScrollContainer(UIFolderMenu(LUAUI_DIRNAME)) },
-        { title = "Files", display = UIFolderMenu(LUAUI_DIRNAME) },
+        { title = "Files", display = MasterFramework:VerticalScrollContainer(UIFolderMenu(LUAUI_DIRNAME)) },
         { title = "Errors", display = errorStack }
     })
 
