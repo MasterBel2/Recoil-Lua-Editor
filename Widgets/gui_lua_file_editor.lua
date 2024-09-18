@@ -709,35 +709,44 @@ function widget:AddConsoleLine(msg)
     return true
 end
 
-function widget:Update()
-    local errors = table.mapToArray(errorDisplays, function(name, display) return { name = name, display = display } end)
-    table.sort(errors, function(a, b)
-        return a.name > b.name
-    end)
-    errorStack:SetMembers(table.imap(errors, function(_, x) return x.display end))
-end
+------------------------------------------------------------------------------------------------------------
+-- Code Editor Text Entry
+------------------------------------------------------------------------------------------------------------
 
-function widget:Initialize()
-    MasterFramework = WG["MasterFramework " .. requiredFrameworkVersion]
-    if not MasterFramework then
-        error("[Lua File Editor] MasterFramework " .. requiredFrameworkVersion .. " not found!")
+local function LuaTextEntry(framework, content, placeholderText, saveFunc)
+    local monospaceFont = framework:Font("fonts/monospaced/SourceCodePro-Medium.otf", 12)
+    local textEntry = framework:TextEntry(content, placeholderText, nil, monospaceFont)
+
+    function textEntry:SetPostEditEffect(postEditEffect)
+        local function ReplaceEditFunction(name)
+            local cachedFunction = textEntry[name]
+            textEntry[name] = function(...)
+                cachedFunction(...)
+                postEditEffect()
+            end
+        end
+        ReplaceEditFunction("InsertText")
+        ReplaceEditFunction("editUndo")
+        ReplaceEditFunction("editRedo")
+        ReplaceEditFunction("editBackspace")
+        ReplaceEditFunction("editDelete")
     end
-
-    table = MasterFramework.table
-
-    local monospaceFont = MasterFramework:Font("fonts/monospaced/SourceCodePro-Medium.otf", 12)
-
-    textEntry = MasterFramework:TextEntry("", "Select File To Edit", nil, monospaceFont)
 
     local textEntry_KeyPress = textEntry.KeyPress
     function textEntry:KeyPress(key, mods, isRepeat)
         if key == 0x73 and mods.ctrl then 
-            Save()
+            saveFunc()
         elseif key == 0x09 then
             self:editTab()
         end
 
         return textEntry_KeyPress(self, key, mods, isRepeat)
+    end
+
+    function textEntry:editTab()
+        local rawString = textEntry.text:GetRawString()
+        local _, _, spaces = rawString:find("\n([ \t]+)[^\n^ ^\t]")
+        self:InsertText(spaces or "    ")
     end
 
     function textEntry:editReturn(isCtrl)
@@ -766,46 +775,19 @@ function widget:Initialize()
         end 
     end
 
-    function textEntry:editTab()
-        local rawString = textEntry.text:GetRawString()
-        local _, _, spaces = rawString:find("\n([ \t]+)[^\n^ ^\t]")
-        self:InsertText(spaces or "    ")
-    end
-
-    local function ReplaceEditFunction(name)
-        local cachedFunction = textEntry[name]
-        textEntry[name] = function(...)
-            cachedFunction(...)
-            
-            if filePath then 
-                MarkFileEdited(filePath, true)
-                editedFiles[filePath] = textEntry.text:GetRawString() -- Would be nice to cache the `no file` case also?
-            end
-
-            saveButton.visual:SetString("Save")
-            revertButton.visual:SetString("Revert")
-        end
-    end
-
-    ReplaceEditFunction("InsertText")
-    ReplaceEditFunction("editUndo")
-    ReplaceEditFunction("editRedo")
-    ReplaceEditFunction("editBackspace")
-    ReplaceEditFunction("editDelete")
-
     local text_Layout = textEntry.text.Layout
     local text_Position = textEntry.text.Position
 
     local textHeight
     local codeNumbersWidth
-    local spacing = MasterFramework:AutoScalingDimension(2)
-    local codeNumbersColor = MasterFramework:Color(0.2, 0.2, 0.2, 1)
+    local spacing = framework:AutoScalingDimension(2)
+    local codeNumbersColor = framework:Color(0.2, 0.2, 0.2, 1)
 
     local textEntryWidth = 0
     local errorHighlightLineOffset = 0
     local errorHighlightHeight = 0
     
-    local errorHighlightRect = MasterFramework:Background(MasterFramework:Rect(function() return textEntryWidth end, function() return errorHighlightHeight end), { MasterFramework:Color(1, 0, 0, 0.3) }, nil)
+    local errorHighlightRect = framework:Background(framework:Rect(function() return textEntryWidth end, function() return errorHighlightHeight end), { framework:Color(1, 0, 0, 0.3) }, nil)
 
     local lineTitles = {}
     local lineOffsets = {}
@@ -816,7 +798,7 @@ function widget:Initialize()
     local oldLineHeight
     
     function textEntry.text:Layout(availableWidth, availableHeight)
-        MasterFramework.startProfile("wrappingText:Layout() - custom layout: update line title widths")
+        -- framework.startProfile("wrappingText:Layout() - custom layout: update line title widths")
         lineStarts, lineEnds = self:GetRawString():lines_MasterFramework()
         lineHeight = monospaceFont:ScaledSize()
 
@@ -831,7 +813,7 @@ function widget:Initialize()
                 local lineTitleWidth
                 local lineTitle = lineTitles[i]
                 if not lineTitles[i] then
-                    lineTitle = MasterFramework:Text(tostring(i), codeNumbersColor, monospaceFont)
+                    lineTitle = framework:Text(tostring(i), codeNumbersColor, monospaceFont)
                     lineTitleWidth, _ = lineTitle:Layout(math.huge, math.huge)
                     lineTitles[i] = lineTitle
                 else
@@ -845,11 +827,11 @@ function widget:Initialize()
                 lineTitles[i] = nil
             end
         end
-        MasterFramework.endProfile("wrappingText:Layout() - custom layout: update line title widths") -- negligible apart from first run
+        -- framework.endProfile("wrappingText:Layout() - custom layout: update line title widths") -- negligible apart from first run
 
         local width, height = text_Layout(self, availableWidth - codeNumbersWidth - spacing(), availableHeight, true)
 
-        MasterFramework.startProfile("wrappingText:Layout() - custom layout: record added newlines")
+        -- framework.startProfile("wrappingText:Layout() - custom layout: record added newlines")
 
         textHeight = height
         textEntryWidth = width + codeNumbersWidth
@@ -890,12 +872,12 @@ function widget:Initialize()
             lineTitles[i]._insertedNewlineCount = insertedNewlineCount
         end
 
-        MasterFramework.endProfile("wrappingText:Layout() - custom layout: record added newlines")
+        -- framework.endProfile("wrappingText:Layout() - custom layout: record added newlines")
 
         return textEntryWidth, height
     end
     function textEntry.text:Position(x, y)
-        -- MasterFramework.startProfile("wrappingText:Position() - line numbers")
+        -- framework.startProfile("wrappingText:Position() - line numbers")
         local rightX = x + codeNumbersWidth
         local topY = y + textHeight
         for i = 1, lineCount do
@@ -903,10 +885,10 @@ function widget:Initialize()
             local width, _ = lineTitle:Size()
             lineTitle:Position(rightX - width, topY - lineOffsets[i] * lineHeight)
         end
-        -- MasterFramework.endProfile("wrappingText:Position() - line numbers")
-        -- MasterFramework.startProfile("wrappingText:Position()")
+        -- framework.endProfile("wrappingText:Position() - line numbers")
+        -- framework.startProfile("wrappingText:Position()")
         text_Position(self, rightX + spacing(), y)
-        -- MasterFramework.endProfile("wrappingText:Position()")
+        -- framework.endProfile("wrappingText:Position()")
         
         if errors[filePath] then
             errorHighlightRect:Position(x, topY - (errors[filePath].line + errorHighlightLineOffset - 1) * lineHeight - errorHighlightHeight)
@@ -945,6 +927,42 @@ function widget:Initialize()
 
         return table.concat(stringComponents)
     end
+
+    return textEntry
+end
+
+------------------------------------------------------------------------------------------------------------
+-- Setup/Update/Teardown
+------------------------------------------------------------------------------------------------------------
+
+function widget:Update()
+    local errors = table.mapToArray(errorDisplays, function(name, display) return { name = name, display = display } end)
+    table.sort(errors, function(a, b)
+        return a.name > b.name
+    end)
+    errorStack:SetMembers(table.imap(errors, function(_, x) return x.display end))
+end
+
+function widget:Initialize()
+    MasterFramework = WG["MasterFramework " .. requiredFrameworkVersion]
+    if not MasterFramework then
+        error("[Lua File Editor] MasterFramework " .. requiredFrameworkVersion .. " not found!")
+    end
+    MasterFramework.LuaTextEntry = LuaTextEntry
+
+    table = MasterFramework.table
+
+    textEntry = MasterFramework:LuaTextEntry("", "Select File To Edit", Save)
+
+    textEntry:SetPostEditEffect(function()
+        if filePath then 
+            MarkFileEdited(filePath, true)
+            editedFiles[filePath] = textEntry.text:GetRawString() -- Would be nice to cache the `no file` case also?
+        end
+
+        saveButton.visual:SetString("Save")
+        revertButton.visual:SetString("Revert")
+    end)
 
     editedFileColor = MasterFramework:Color(1, 0.6, 0.3, 1)
     savedFileColor = MasterFramework:Color(1, 1, 1, 1)
