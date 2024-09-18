@@ -307,7 +307,6 @@ end
 local fileName
 local filePath
 local showFullFilePath
-local shownError
 
 local tabBar
 
@@ -337,6 +336,7 @@ local function SelectFile(path, _fileName)
     if VFS.FileExists(path, VFS.RAW) then
         fileName = _fileName or path:match(fileNamePattern)
         filePath = path
+        textEntry:DisplayError(errors[path])
         textEntry.text:SetString(editedFiles[path] or VFS.LoadFile(path))
         fileNameDisplay.visual:SetString(showFullFilePath and path or fileName)
     end
@@ -689,6 +689,10 @@ local consoleStrings = {
         errorDisplays[path] = errorDisplays[path] or ErrorDisplay()
         errorDisplays[path].descriptionText:SetString(widgetPathToWidgetName[path] or path .. ":" .. errorMessage)
         errorDisplays[path].path = path
+
+        if path == filePath then
+            textEntry:DisplayError(errors[path])
+        end
     end,
     ["^Removed widget: (.*)"] = function(fullMessage, widgetName) -- widget crash
         -- runningWidgets["LuaUI/Widgets/" .. widgetNameToFileName[widgetName]].enabled = false
@@ -791,12 +795,25 @@ local function LuaTextEntry(framework, content, placeholderText, saveFunc)
 
     local lineTitles = {}
     local lineOffsets = {}
+    textEntry.lineOffsets = lineOffsets
     local lineStarts, lineEnds
     local lineCount
 
     local lineHeight
     local oldLineHeight
     
+    local _error
+    local shouldJumpToError
+
+    function textEntry:DisplayError(newError)
+        if _error ~= newError then
+            _error = newError
+            shouldJumpToError = (newError ~= nil)
+            self.text:NeedsLayout()
+            self.text:NeedsPosition()
+        end
+    end
+
     function textEntry.text:Layout(availableWidth, availableHeight)
         -- framework.startProfile("wrappingText:Layout() - custom layout: update line title widths")
         lineStarts, lineEnds = self:GetRawString():lines_MasterFramework()
@@ -843,9 +860,8 @@ local function LuaTextEntry(framework, content, placeholderText, saveFunc)
         local removedSpacesIndex = 1
         local computedOffset = 0
 
-        local error = errors[filePath]
         local errorLine
-        if error then errorLine = error.line end
+        if _error then errorLine = _error.line end
         local addedCharacters = self.addedCharacters
         local string_sub = displayString.sub
         for i = 1, lineCount do
@@ -860,7 +876,7 @@ local function LuaTextEntry(framework, content, placeholderText, saveFunc)
             removedSpacesIndex = _removedSpacesIndex
             computedOffset = _computedOffset
 
-            if error then
+            if _error then
                 if errorLine == i then
                     errorHighlightLineOffset = insertedNewlineCount
                 elseif errorLine == i - 1 then
@@ -890,8 +906,12 @@ local function LuaTextEntry(framework, content, placeholderText, saveFunc)
         text_Position(self, rightX + spacing(), y)
         -- framework.endProfile("wrappingText:Position()")
         
-        if errors[filePath] then
-            errorHighlightRect:Position(x, topY - (errors[filePath].line + errorHighlightLineOffset - 1) * lineHeight - errorHighlightHeight)
+        if _error then
+            if shouldJumpToError and MasterFramework.activeDrawingGroup.SetYOffset then
+                MasterFramework.activeDrawingGroup:SetYOffset(math_max(0, math_min(MasterFramework.activeDrawingGroup.contentHeight - textHeight, (textEntry.lineOffsets[_error.line] - 5) * textEntry.text._readOnly_font:ScaledSize())))
+            end
+            shouldJumpToError = nil
+            errorHighlightRect:Position(x, topY - (_error.line + errorHighlightLineOffset - 1) * lineHeight - errorHighlightHeight)
         end
     end
     
@@ -989,22 +1009,6 @@ function widget:Initialize()
     })
 
     local codeScrollContainer = MasterFramework:VerticalScrollContainer(textEntry)
-
-    local viewportLayout = codeScrollContainer.viewport.Layout
-    function codeScrollContainer.viewport:Layout(availableWidth, availableHeight)
-        local width, height = viewportLayout(self, availableWidth, availableHeight)
-
-        local error = errors[filePath]
-        if error and not shownError then
-            self.xOffset = 0
-            -- Because of paddings around the text view, if we didnt remove anything from the offset, the error would be partially off-screen!
-            -- More than that, we'll remove a few lines for context.
-            self.yOffset = math_max(0, math_min(self.contentHeight - height, (lineOffsets[error.line] - 5) * textEntry.text._readOnly_font:ScaledSize()))
-            shownError = true
-        end
-
-        return width, height
-    end
 
     local resizableFrame = MasterFramework:ResizableMovableFrame(
         "Lua File Editor",
