@@ -717,7 +717,7 @@ end
 -- Code Editor Text Entry
 ------------------------------------------------------------------------------------------------------------
 
-local function LuaTextEntry(framework, content, placeholderText, saveFunc)
+function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
     local monospaceFont = framework:Font("fonts/monospaced/SourceCodePro-Medium.otf", 12)
     local textEntry = framework:TextEntry(content, placeholderText, nil, monospaceFont)
 
@@ -968,11 +968,10 @@ function widget:Initialize()
     if not MasterFramework then
         error("[Lua File Editor] MasterFramework " .. requiredFrameworkVersion .. " not found!")
     end
-    MasterFramework.LuaTextEntry = LuaTextEntry
 
     table = MasterFramework.table
 
-    textEntry = MasterFramework:LuaTextEntry("", "Select File To Edit", Save)
+    textEntry = WG.LuaTextEntry(MasterFramework, "", "Select File To Edit", Save)
 
     textEntry:SetPostEditEffect(function()
         if filePath then 
