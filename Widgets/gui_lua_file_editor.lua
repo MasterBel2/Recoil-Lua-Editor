@@ -301,7 +301,7 @@ local function lex(string)
 end
 
 ------------------------------------------------------------------------------------------------------------
--- Setup/Update/Teardown
+-- Widget Internals
 ------------------------------------------------------------------------------------------------------------
 
 local fileName
@@ -795,7 +795,7 @@ function widget:Initialize()
 
     local text_Layout = textEntry.text.Layout
     local text_Position = textEntry.text.Position
-    
+
     local textHeight
     local codeNumbersWidth
     local spacing = MasterFramework:AutoScalingDimension(2)
@@ -949,8 +949,6 @@ function widget:Initialize()
     editedFileColor = MasterFramework:Color(1, 0.6, 0.3, 1)
     savedFileColor = MasterFramework:Color(1, 1, 1, 1)
 
-    -- local x = "------------------------------------------------------------------------------------------------------------"
-
     fileNameDisplay = MasterFramework:Button(MasterFramework:Text("<no file>", MasterFramework:Color(0.3, 0.3, 0.3, 1)), function()
         showFullFilePath = not showFullFilePath
         fileNameDisplay.visual:SetString(showFullFilePath and filePath or fileName or "<no file>")
@@ -1032,6 +1030,7 @@ function widget:Initialize()
         SelectFile(filePath)
         RevealPath(filePath)
     end
+
 
     local buffer = Spring.GetConsoleBuffer()
     for _, line in ipairs(buffer) do
