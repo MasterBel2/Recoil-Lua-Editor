@@ -311,6 +311,7 @@ local showFullFilePath
 local tabBar
 
 local textEntry
+local codeScrollContainer
 local fileBrowserStackContents
 
 local editedFileColor
@@ -319,6 +320,9 @@ local savedFileColor
 local fileNameText
 local saveButton
 local revertButton
+
+local lastSelectedSearchResult
+local searchResults = {}
 
 local editedFiles = {}
 
@@ -331,13 +335,18 @@ local fileNamePattern = "([%w%s%._&-]+)/?$"
 
 local verticalSplitDividerXCache = {}
 
-local function SelectFile(path, _fileName)
+local function SelectFile(path, _fileName, targetCharacterIndex)
     textEntry.placeholder:SetString("")
     if VFS.FileExists(path, VFS.RAW) then
         fileName = _fileName or path:match(fileNamePattern)
         filePath = path
-        textEntry:DisplayError(errors[path])
         textEntry.text:SetString(editedFiles[path] or VFS.LoadFile(path))
+        if targetCharacterIndex then
+            textEntry.text:Layout(textEntry.text.availableWidth, textEntry.text.availableHeight)
+            local lineCount = #textEntry.text:GetDisplayString():sub(1, textEntry.text:RawIndexToDisplayIndex(targetCharacterIndex)):lines_MasterFramework()
+            local offset = (lineCount - 10) * textEntry.text._readOnly_font:ScaledSize()
+            codeScrollContainer.viewport:SetYOffset(math.max(0, offset))
+        end
         fileNameDisplay.visual:SetString(showFullFilePath and path or fileName)
     end
 end
@@ -793,6 +802,8 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
     
     local errorHighlightRect = framework:Background(framework:Rect(function() return textEntryWidth end, function() return errorHighlightHeight end), { framework:Color(1, 0, 0, 0.3) }, nil)
 
+    local displayString
+
     local lineTitles = {}
     local lineOffsets = {}
     textEntry.lineOffsets = lineOffsets
@@ -818,6 +829,9 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
         -- framework.startProfile("wrappingText:Layout() - custom layout: update line title widths")
         lineStarts, lineEnds = self:GetRawString():lines_MasterFramework()
         lineHeight = monospaceFont:ScaledSize()
+
+        self.availableWidth = availableWidth
+        self.availableHeight = availableHeight
 
         local oldLineCount
         lineCount = #lineStarts
@@ -853,7 +867,7 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
         textHeight = height
         textEntryWidth = width + codeNumbersWidth
 
-        local displayString = self:GetDisplayString()
+        displayString = self:GetDisplayString()
 
         local insertedNewlineCount = 0
         local addedCharactersIndex = 1
@@ -913,6 +927,41 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
             shouldJumpToError = nil
             errorHighlightRect:Position(x, topY - (_error.line + errorHighlightLineOffset - 1) * lineHeight - errorHighlightHeight)
         end
+    end
+
+    local _Draw = textEntry.text.Draw
+    function textEntry.text:Draw(glFont)
+        local lineStarts, lineEnds = self:GetDisplayString():lines_MasterFramework()
+        local lineHeight = self._readOnly_font:ScaledSize() * glFont.lineheight
+        gl.PushMatrix()
+        local x, y = self:CachedPositionRemainingInLocalContext()
+        gl.Translate(x, y, 0)
+
+        gl.Color(1, 1, 1, 0.1)
+        for _, searchResult in ipairs(searchResults) do
+            if searchResult.filePath == filePath then
+                for i = 1, #lineStarts do
+                    if lineStarts[i] < searchResult.displayStart and lineEnds[i] > searchResult.displayEnd then
+                        if searchResult == lastSelectedSearchResult then
+                            gl.Color(1, 1, 0, 1)
+                        end
+                        gl.Rect(
+                            glFont:GetTextWidth(displayString:sub(lineStarts[i], searchResult.displayStart - 1)) * self._readOnly_font:ScaledSize(),
+                            textHeight - i * lineHeight,
+                            glFont:GetTextWidth(displayString:sub(lineStarts[i], searchResult.displayEnd)) * self._readOnly_font:ScaledSize(),
+                            textHeight - (i - 1) * lineHeight
+                        )
+                        if searchResult == lastSelectedSearchResult then
+                            gl.Color(1, 1, 1, 0.1)
+                        end
+                        break
+                    end
+                end
+            end
+        end
+        gl.PopMatrix()
+
+        _Draw(self, glFont)
     end
     
     function textEntry.text:ColoredString(string)
@@ -983,6 +1032,63 @@ function widget:Initialize()
         revertButton.visual:SetString("Revert")
     end)
 
+    local monospaceFont = MasterFramework:Font("fonts/monospaced/SourceCodePro-Medium.otf", 12)
+    local searchEntry = MasterFramework:TextEntry("", "Search", nil, monospaceFont)
+    local searchStack = MasterFramework:VerticalStack({}, MasterFramework:AutoScalingDimension(2), 0)
+
+    function searchEntry:SetPostEditEffect(postEditEffect)
+        local function ReplaceEditFunction(name)
+            local cachedFunction = searchEntry[name]
+            searchEntry[name] = function(...)
+                cachedFunction(...)
+                postEditEffect()
+            end
+        end
+        ReplaceEditFunction("InsertText")
+        ReplaceEditFunction("editUndo")
+        ReplaceEditFunction("editRedo")
+        ReplaceEditFunction("editBackspace")
+        ReplaceEditFunction("editDelete")
+    end
+
+    searchEntry:SetPostEditEffect(function()
+        local searchTerm = searchEntry.text:GetRawString()
+        if searchTerm:len() < 3 then
+            searchStack:SetMembers({})
+            return
+        end
+
+        local searchBegin = 1
+        searchResults = {}
+        lastSelectedSearchResult = nil
+        local searchee = textEntry.text:GetRawString()
+        while searchBegin < searchee:len() do
+            local start, _end = searchee:find(searchTerm, searchBegin)
+            if start and _end then
+                table.insert(searchResults, { filePath = filePath, start = start, _end = _end, displayStart = textEntry.text:RawIndexToDisplayIndex(start), displayEnd = textEntry.text:RawIndexToDisplayIndex(_end) })
+                searchBegin = _end + 1
+            else
+                break
+            end
+        end
+
+        searchStack:SetMembers(table.imap(searchResults, function(_, result)
+            return MasterFramework:Button(
+                MasterFramework:WrappingText(
+                    "\255\122\122\122" .. (searchee:sub(1, result.start - 1):match("[^\n]*[\n][^\n]*$") or "") .. 
+                    "\255\255\255\255" .. searchee:sub(result.start, result._end) ..
+                    "\255\122\122\122" .. (searchee:match("([^\n]*[\n][^\n]*)", result._end + 1) or "")
+                ),
+                function()
+                    lastSelectedSearchResult = result
+                    textEntry.text:NeedsRedraw()
+                    SelectFile(result.filePath, nil, result.start)
+                end
+            )
+        end))
+        textEntry.text:NeedsRedraw()
+    end)
+
     editedFileColor = MasterFramework:Color(1, 0.6, 0.3, 1)
     savedFileColor = MasterFramework:Color(1, 1, 1, 1)
 
@@ -1004,10 +1110,11 @@ function widget:Initialize()
 
     tabBar = TabBar({
         { title = "Files", display = MasterFramework:VerticalScrollContainer(UIFolderMenu(LUAUI_DIRNAME)) },
+        { title = "Search", display = MasterFramework:VerticalHungryStack(searchEntry, MasterFramework:VerticalScrollContainer(searchStack), MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)), 0) },
         { title = "Errors", display = errorStack }
     })
 
-    local codeScrollContainer = MasterFramework:VerticalScrollContainer(textEntry)
+    codeScrollContainer = MasterFramework:VerticalScrollContainer(textEntry)
 
     local resizableFrame = MasterFramework:ResizableMovableFrame(
         "Lua File Editor",
