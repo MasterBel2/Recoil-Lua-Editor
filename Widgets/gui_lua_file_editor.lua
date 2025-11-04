@@ -317,6 +317,9 @@ local fileBrowserStackContents
 local editedFileColor
 local savedFileColor
 
+local searchHighlightColor
+local selectedSearchHighlightColor
+
 local fileNameText
 local saveButton
 local revertButton
@@ -938,40 +941,6 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
         end
     end
 
-    local _Draw = textEntry.text.Draw
-    function textEntry.text:Draw(glFont)
-        local lineStarts, lineEnds = self:GetDisplayString():lines_MasterFramework()
-        local lineHeight = self._readOnly_font:ScaledSize() * glFont.lineheight
-        gl.PushMatrix()
-        local x, y = self:CachedPositionRemainingInLocalContext()
-        gl.Translate(x, y, 0)
-
-        gl.Color(1, 1, 1, 0.1)
-        for _, searchResult in ipairs(searchResults) do
-            if searchResult.filePath == filePath then
-                for i = 1, #lineStarts do
-                    if lineStarts[i] < searchResult.displayStart and lineEnds[i] > searchResult.displayEnd then
-                        if searchResult == lastSelectedSearchResult then
-                            gl.Color(1, 1, 0, 1)
-                        end
-                        gl.Rect(
-                            glFont:GetTextWidth(displayString:sub(lineStarts[i], searchResult.displayStart - 1)) * self._readOnly_font:ScaledSize(),
-                            textHeight - i * lineHeight,
-                            glFont:GetTextWidth(displayString:sub(lineStarts[i], searchResult.displayEnd)) * self._readOnly_font:ScaledSize(),
-                            textHeight - (i - 1) * lineHeight
-                        )
-                        if searchResult == lastSelectedSearchResult then
-                            gl.Color(1, 1, 1, 0.1)
-                        end
-                        break
-                    end
-                end
-            end
-        end
-        gl.PopMatrix()
-
-        _Draw(self, glFont)
-    end
     
     function textEntry.text:ColoredString(string)
         local tokenCount, tokenTypes, tokenStartIndices, tokenEndIndices = lex(string)
@@ -1027,6 +996,9 @@ function widget:Initialize()
         error("[Lua File Editor] MasterFramework " .. requiredFrameworkVersion .. " not found!")
     end
 
+    searchHighlightColor = MasterFramework:Color(0.3, 0.6, 1, 0.3)
+    selectedSearchHighlightColor = MasterFramework:Color(1, 1, 0.0, 0.3)
+
     table = MasterFramework.table
 
     textEntry = WG.LuaTextEntry(MasterFramework, "", "Select File To Edit", Save)
@@ -1062,6 +1034,11 @@ function widget:Initialize()
 
     searchEntry:SetPostEditEffect(function()
         local searchTerm = searchEntry.text:GetRawString()
+
+        for _, result in ipairs(searchResults) do
+            _ = result.highlightID and textEntry.text:RemoveHighlight(result.highlightID)
+        end
+
         if searchTerm:len() < 3 then
             searchStack:SetMembers({})
             return
@@ -1074,7 +1051,12 @@ function widget:Initialize()
         while searchBegin < searchee:len() do
             local start, _end = searchee:find(searchTerm, searchBegin)
             if start and _end then
-                table.insert(searchResults, { filePath = filePath, start = start, _end = _end, displayStart = textEntry.text:RawIndexToDisplayIndex(start), displayEnd = textEntry.text:RawIndexToDisplayIndex(_end) })
+                table.insert(searchResults, { 
+                    filePath = filePath, 
+                    start = start, 
+                    _end = _end, 
+                    highlightID = textEntry.text:HighlightRange(searchHighlightColor, start, _end + 1)
+                })
                 searchBegin = _end + 1
             else
                 break
@@ -1089,8 +1071,9 @@ function widget:Initialize()
                     "\255\122\122\122" .. (searchee:match("([^\n]*[\n][^\n]*)", result._end + 1) or "")
                 ),
                 function()
+                    _ = lastSelectedSearchResult and textEntry.text:UpdateHighlight(lastSelectedSearchResult.highlightID, searchHighlightColor, lastSelectedSearchResult.start, lastSelectedSearchResult._end)
+                    textEntry.text:UpdateHighlight(result.highlightID, selectedSearchHighlightColor, result.start, result._end)
                     lastSelectedSearchResult = result
-                    textEntry.text:NeedsRedraw()
                     SelectFile(result.filePath, nil, result.start)
                 end
             )
