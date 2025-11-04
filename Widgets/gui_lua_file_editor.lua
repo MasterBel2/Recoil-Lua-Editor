@@ -906,6 +906,15 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
 
         return textEntryWidth, height
     end
+    local placeholder_Layout = textEntry.placeholder.Layout
+    function textEntry.placeholder:Layout(availableWidth, availableHeight)
+        local width, height = placeholder_Layout(self, availableWidth - codeNumbersWidth - spacing(), availableHeight)
+        return width + codeNumbersWidth + spacing(), height
+    end
+    local placeholder_Position = textEntry.placeholder.Position
+    function textEntry.placeholder:Position(x, y)
+        placeholder_Position(self, x + codeNumbersWidth + spacing(), y)
+    end
     function textEntry.text:Position(x, y)
         -- framework.startProfile("wrappingText:Position() - line numbers")
         local rightX = x + codeNumbersWidth
