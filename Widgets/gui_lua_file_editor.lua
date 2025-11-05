@@ -309,6 +309,7 @@ local filePath
 local showFullFilePath
 
 local tabBar
+local searchEntry
 
 local textEntry
 local codeScrollContainer
@@ -808,7 +809,10 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
 
     local textEntry_KeyPress = textEntry.KeyPress
     function textEntry:KeyPress(key, mods, isRepeat)
-        if key == 0x72 and mods.ctrl then -- Ctrl+R
+        if key == 0x66 and mods.ctrl then
+            tabBar:Select(2)
+            searchEntry:TakeFocus()
+        elseif key == 0x72 and mods.ctrl then -- Ctrl+R
             saveFunc()
             local widgetName = widgetPathToWidgetName[filePath]
             if mods.shift then
@@ -1047,7 +1051,7 @@ function widget:Initialize()
     end)
 
     local monospaceFont = MasterFramework:Font("fonts/monospaced/SourceCodePro-Medium.otf", 12)
-    local searchEntry = MasterFramework:TextEntry("", "Search", nil, monospaceFont)
+    searchEntry = MasterFramework:TextEntry("", "Search", nil, monospaceFont)
     local searchStack = MasterFramework:VerticalStack({}, MasterFramework:AutoScalingDimension(2), 0)
 
     function searchEntry:SetPostEditEffect(postEditEffect)
