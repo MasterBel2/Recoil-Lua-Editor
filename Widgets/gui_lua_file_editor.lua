@@ -1108,8 +1108,8 @@ function widget:Initialize()
                     "\255\122\122\122" .. (searchee:match("([^\n]*[\n][^\n]*)", result._end + 1) or "")
                 ),
                 function()
-                    _ = lastSelectedSearchResult and textEntry.text:UpdateHighlight(lastSelectedSearchResult.highlightID, searchHighlightColor, lastSelectedSearchResult.start, lastSelectedSearchResult._end)
-                    textEntry.text:UpdateHighlight(result.highlightID, selectedSearchHighlightColor, result.start, result._end)
+                    _ = lastSelectedSearchResult and textEntry.text:UpdateHighlight(lastSelectedSearchResult.highlightID, searchHighlightColor, lastSelectedSearchResult.start, lastSelectedSearchResult._end + 1)
+                    textEntry.text:UpdateHighlight(result.highlightID, selectedSearchHighlightColor, result.start, result._end + 1)
                     lastSelectedSearchResult = result
                     SelectFile(result.filePath, nil, result.start)
                 end
