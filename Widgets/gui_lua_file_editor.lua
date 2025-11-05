@@ -317,6 +317,7 @@ local fileBrowserStackContents
 local editedFileColor
 local savedFileColor
 
+local errorHighlightColor
 local searchHighlightColor
 local selectedSearchHighlightColor
 
@@ -333,10 +334,27 @@ local folderMenus = {}
 local fileButtons = {}
 
 local errors = {}
+local errorDisplays = {}
+local errorHighlightID
 
 local fileNamePattern = "([%w%s%._&-]+)/?$"
 
 local verticalSplitDividerXCache = {}
+
+local function ConfigureErrorHighlight()
+    if errors[filePath] then
+        local lineStarts, lineEnds = textEntry.text:GetRawString():lines_MasterFramework()
+        local line = errors[filePath].line
+
+        if errorHighlightID then
+            textEntry.text:UpdateHighlight(errorHighlightID, errorHighlightColor, lineStarts[line], lineEnds[line] + 1)
+        else
+            errorHighlightID = textEntry.text:HighlightRange(errorHighlightColor, lineStarts[line], lineEnds[line] + 1)
+        end
+    elseif errorHighlightID then
+        textEntry.text:RemoveHighlight(errorHighlightID)
+    end
+end
 
 local function SelectFile(path, _fileName, targetCharacterIndex)
     textEntry.placeholder:SetString("")
@@ -344,13 +362,16 @@ local function SelectFile(path, _fileName, targetCharacterIndex)
         fileName = _fileName or path:match(fileNamePattern)
         filePath = path
         textEntry.text:SetString(editedFiles[path] or VFS.LoadFile(path))
-        if targetCharacterIndex then
+        if textEntry.text.availableWidth and textEntry.text.availableHeight then
             textEntry.text:Layout(textEntry.text.availableWidth, textEntry.text.availableHeight)
-            local lineCount = #textEntry.text:GetDisplayString():sub(1, textEntry.text:RawIndexToDisplayIndex(targetCharacterIndex)):lines_MasterFramework()
-            local offset = (lineCount - 10) * textEntry.text._readOnly_font:ScaledSize()
-            codeScrollContainer.viewport:SetYOffset(math.max(0, offset))
+            if targetCharacterIndex then
+                local lineCount = #textEntry.text:GetDisplayString():sub(1, textEntry.text:RawIndexToDisplayIndex(targetCharacterIndex)):lines_MasterFramework()
+                local offset = (lineCount - 10) * textEntry.text._readOnly_font:ScaledSize()
+                codeScrollContainer.viewport:SetYOffset(math.max(0, offset))
+            end
+            fileNameDisplay.visual:SetString(showFullFilePath and path or fileName)
+            ConfigureErrorHighlight()
         end
-        fileNameDisplay.visual:SetString(showFullFilePath and path or fileName)
     end
 end
 
@@ -657,13 +678,10 @@ local function TabBar(options)
     return tabBar
 end
 
-
 local widgetPathToWidgetName = {}
 local widgetNameToFileName = {}
 local fileNameToWidgetName = {}
 local runningWidgets = {}
-local errorDisplays = {}
-local errors = {}
 local messages = {}
 
 function ErrorDisplay()
@@ -672,7 +690,9 @@ function ErrorDisplay()
     errorDisplay = MasterFramework:Button(text, function()
         if errorDisplay.path then
             shownError = false
-            SelectFile(errorDisplay.path)
+            local lineStarts, lineEnds = textEntry.text:GetDisplayString():lines_MasterFramework()
+            SelectFile(errorDisplay.path, nil, lineStarts[errors[errorDisplay.path].line])
+            RevealPath(errorDisplay.path)
         end
     end)
     errorDisplay.descriptionText = text
@@ -680,21 +700,59 @@ function ErrorDisplay()
     return errorDisplay
 end
 
+local failedToLoad = {}
+
 local consoleStrings = {
+    ["^Loading:  (.*)"] = function(fullMessage, widgetPath)
+        runningWidgets[widgetPath] = { enabled = true }
+        errorDisplays[widgetPath] = nil
+        errors[widgetPath] = nil
+        if widgetPath == filePath then
+            ConfigureErrorHighlight()
+        end
+    end,
     ["^Loading widget from user:  (.+[^%s])%s+<([^%s]+)> ...$"] = function(fullMessage, widgetName, fileName)
         -- If we get this, we dont get an "Added" message when the widget is successfully loaded
+        failedToLoad["LuaUI/Widgets/" .. fileName] = nil
+        
         widgetNameToFileName[widgetName] = fileName
         fileNameToWidgetName[fileName] = widgetName
-        widgetPathToWidgetName["LuaUI/Widgets/" .. fileName] = widgetname
-        runningWidgets["LuaUI/Widgets/" .. fileName] = { enabled = true}
+        widgetPathToWidgetName["LuaUI/Widgets/" .. fileName] = widgetName
+        runningWidgets["LuaUI/Widgets/" .. fileName] = { enabled = true }
+        errorDisplays["LuaUI/Widgets/" .. fileName] = nil
+        errors["LuaUI/Widgets/" .. fileName] = nil
+
+        if path == filePath then
+            ConfigureErrorHighlight()
+        end
     end,
-    ["^Added: (.*)"] = function(fullMessage, widgetPath) 
+    ["^Added:  (.*)"] = function(fullMessage, widgetPath) 
         -- We only get this if the widget was manually enabled by the user, not when the widget is loaded by the game. 
         runningWidgets[widgetPath] = { enabled = true }
         errorDisplays[widgetPath] = nil
+        errors[widgetPath] = nil
+        if widgetPath == filePath then
+            ConfigureErrorHighlight()
+        end
     end,
-    ["^Removed: (.*)"] = function(fullMessage, widgetPath) -- disabled by user
+    ["^Removed:  (.*)"] = function(fullMessage, widgetPath) -- disabled by user
         runningWidgets[widgetPath] = nil
+
+        if widgetPath == filePath then
+            ConfigureErrorHighlight()
+        end
+    end,
+    ["^Failed to load: (.+[^%s])  %((.*)%)"] = function(fullMessage, fileName, description) -- widget crash
+        -- failedToLoad[fileName] = 
+        failedToLoad[fileName] = description
+        local path, line, errorMessage = description:match("%[string \"([^\"]+)\"%]:(%d+): (.*)")
+        -- local path = "LuaUI/Widgets/" .. fileName
+        if path then
+            errors[path] = { message = errorMessage, line = tonumber(line) }
+            errorDisplays[path] = errorDisplays[path] or ErrorDisplay()
+            errorDisplays[path].descriptionText:SetString(widgetPathToWidgetName[path] or path .. ":" .. errorMessage)
+            errorDisplays[path].path = path
+        end
     end,
     ["^Error in ([^%s\n]+)%(%): %[string \"([^\"]+)\"%]:(%d+): (.*)"] = function(fullMessage, func, path, line, errorMessage)
         errors[path] = { message = errorMessage, line = tonumber(line), func = func }
@@ -703,7 +761,7 @@ local consoleStrings = {
         errorDisplays[path].path = path
 
         if path == filePath then
-            textEntry:DisplayError(errors[path])
+            ConfigureErrorHighlight()
         end
     end,
     ["^Removed widget: (.*)"] = function(fullMessage, widgetName) -- widget crash
@@ -800,11 +858,7 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
     local codeNumbersColor = framework:Color(0.2, 0.2, 0.2, 1)
 
     local textEntryWidth = 0
-    local errorHighlightLineOffset = 0
-    local errorHighlightHeight = 0
     
-    local errorHighlightRect = framework:Background(framework:Rect(function() return textEntryWidth end, function() return errorHighlightHeight end), { framework:Color(1, 0, 0, 0.3) }, nil)
-
     local displayString
 
     local lineTitles = {}
@@ -815,18 +869,6 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
 
     local lineHeight
     local oldLineHeight
-    
-    local _error
-    local shouldJumpToError
-
-    function textEntry:DisplayError(newError)
-        if _error ~= newError then
-            _error = newError
-            shouldJumpToError = (newError ~= nil)
-            self.text:NeedsLayout()
-            self.text:NeedsPosition()
-        end
-    end
 
     function textEntry.text:Layout(availableWidth, availableHeight)
         -- framework.startProfile("wrappingText:Layout() - custom layout: update line title widths")
@@ -877,8 +919,6 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
         local removedSpacesIndex = 1
         local computedOffset = 0
 
-        local errorLine
-        if _error then errorLine = _error.line end
         local addedCharacters = self.addedCharacters
         local string_sub = displayString.sub
         for i = 1, lineCount do
@@ -893,14 +933,6 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
             removedSpacesIndex = _removedSpacesIndex
             computedOffset = _computedOffset
 
-            if _error then
-                if errorLine == i then
-                    errorHighlightLineOffset = insertedNewlineCount
-                elseif errorLine == i - 1 then
-                    errorHighlightHeight = (insertedNewlineCount - errorHighlightLineOffset + 1) * lineHeight
-                    errorWidth, errorHeight = errorHighlightRect:Layout(textEntryWidth, errorHighlightHeight)
-                end
-            end
             lineOffsets[i] = i + insertedNewlineCount
             lineTitles[i]._insertedNewlineCount = insertedNewlineCount
         end
@@ -931,16 +963,7 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
         -- framework.startProfile("wrappingText:Position()")
         text_Position(self, rightX + spacing(), y)
         -- framework.endProfile("wrappingText:Position()")
-        
-        if _error then
-            if shouldJumpToError and MasterFramework.activeDrawingGroup.SetYOffset then
-                MasterFramework.activeDrawingGroup:SetYOffset(math_max(0, math_min(MasterFramework.activeDrawingGroup.contentHeight - textHeight, (textEntry.lineOffsets[_error.line] - 5) * textEntry.text._readOnly_font:ScaledSize())))
-            end
-            shouldJumpToError = nil
-            errorHighlightRect:Position(x, topY - (_error.line + errorHighlightLineOffset - 1) * lineHeight - errorHighlightHeight)
-        end
     end
-
     
     function textEntry.text:ColoredString(string)
         local tokenCount, tokenTypes, tokenStartIndices, tokenEndIndices = lex(string)
@@ -996,6 +1019,7 @@ function widget:Initialize()
         error("[Lua File Editor] MasterFramework " .. requiredFrameworkVersion .. " not found!")
     end
 
+    errorHighlightColor = MasterFramework:Color(1, 0.2, 0.1, 0.5)
     searchHighlightColor = MasterFramework:Color(0.3, 0.6, 1, 0.3)
     selectedSearchHighlightColor = MasterFramework:Color(1, 1, 0.0, 0.3)
 
