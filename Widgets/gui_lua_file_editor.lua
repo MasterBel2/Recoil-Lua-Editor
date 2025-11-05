@@ -808,7 +808,16 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
 
     local textEntry_KeyPress = textEntry.KeyPress
     function textEntry:KeyPress(key, mods, isRepeat)
-        if key == 0x73 and mods.ctrl then 
+        if key == 0x72 and mods.ctrl then -- Ctrl+R
+            saveFunc()
+            local widgetName = widgetPathToWidgetName[filePath]
+            if mods.shift then
+                Spring.SendCommands("luaui reload")
+            elseif widgetName then
+                widgetHandler:DisableWidget(widgetName)
+                widgetHandler:EnableWidget(widgetName)
+            end
+        elseif key == 0x73 and mods.ctrl then 
             saveFunc()
         elseif key == 0x09 then
             self:editTab()
