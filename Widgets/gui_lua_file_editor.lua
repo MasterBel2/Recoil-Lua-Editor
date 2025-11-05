@@ -1040,16 +1040,6 @@ function widget:Initialize()
 
     textEntry = WG.LuaTextEntry(MasterFramework, "", "Select File To Edit", Save)
 
-    textEntry:SetPostEditEffect(function()
-        if filePath then 
-            MarkFileEdited(filePath, true)
-            editedFiles[filePath] = textEntry.text:GetRawString() -- Would be nice to cache the `no file` case also?
-        end
-
-        saveButton.visual:SetString("Save")
-        revertButton.visual:SetString("Revert")
-    end)
-
     local monospaceFont = MasterFramework:Font("fonts/monospaced/SourceCodePro-Medium.otf", 12)
     searchEntry = MasterFramework:TextEntry("", "Search", nil, monospaceFont)
     local searchStack = MasterFramework:VerticalStack({}, MasterFramework:AutoScalingDimension(2), 0)
@@ -1069,7 +1059,7 @@ function widget:Initialize()
         ReplaceEditFunction("editDelete")
     end
 
-    searchEntry:SetPostEditEffect(function()
+    local function Search()
         local searchTerm = searchEntry.text:GetRawString()
 
         for _, result in ipairs(searchResults) do
@@ -1116,7 +1106,21 @@ function widget:Initialize()
             )
         end))
         textEntry.text:NeedsRedraw()
+    end
+
+    textEntry:SetPostEditEffect(function()
+        if filePath then 
+            MarkFileEdited(filePath, true)
+            editedFiles[filePath] = textEntry.text:GetRawString() -- Would be nice to cache the `no file` case also?
+        end
+
+        saveButton.visual:SetString("Save")
+        revertButton.visual:SetString("Revert")
+
+        Search()
     end)
+
+    searchEntry:SetPostEditEffect(Search)
 
     editedFileColor = MasterFramework:Color(1, 0.6, 0.3, 1)
     savedFileColor = MasterFramework:Color(1, 1, 1, 1)
