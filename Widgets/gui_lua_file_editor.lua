@@ -914,7 +914,7 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
         end
         -- framework.endProfile("wrappingText:Layout() - custom layout: update line title widths") -- negligible apart from first run
 
-        local width, height = text_Layout(self, availableWidth - codeNumbersWidth - spacing(), availableHeight, true)
+        local width, height = text_Layout(self, availableWidth - codeNumbersWidth - spacing(), availableHeight)
 
         -- framework.startProfile("wrappingText:Layout() - custom layout: record added newlines")
 
