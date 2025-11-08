@@ -791,6 +791,7 @@ end
 function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
     local monospaceFont = framework:Font("fonts/monospaced/SourceCodePro-Medium.otf", 12)
     local textEntry = framework:TextEntry(content, placeholderText, nil, monospaceFont)
+    textEntry.saveFunc = saveFunc
 
     function textEntry:SetPostEditEffect(postEditEffect)
         local function ReplaceEditFunction(name)
@@ -809,19 +810,7 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
 
     local textEntry_KeyPress = textEntry.KeyPress
     function textEntry:KeyPress(key, mods, isRepeat)
-        if key == 0x66 and mods.ctrl then
-            tabBar:Select(2)
-            searchEntry:TakeFocus()
-        elseif key == 0x72 and mods.ctrl then -- Ctrl+R
-            saveFunc()
-            local widgetName = widgetPathToWidgetName[filePath]
-            if mods.shift then
-                Spring.SendCommands("luaui reload")
-            elseif widgetName then
-                widgetHandler:DisableWidget(widgetName)
-                widgetHandler:EnableWidget(widgetName)
-            end
-        elseif key == 0x73 and mods.ctrl then 
+        if key == 0x73 and mods.ctrl then 
             saveFunc()
         elseif key == 0x09 then
             self:editTab()
@@ -1039,6 +1028,25 @@ function widget:Initialize()
     table = MasterFramework.table
 
     textEntry = WG.LuaTextEntry(MasterFramework, "", "Select File To Edit", Save)
+    local textEntry_KeyPress = textEntry.KeyPress
+    function textEntry:KeyPress(key, mods, isRepeat)
+        if key == 0x66 and mods.ctrl then
+            tabBar:Select(2)
+            searchEntry:TakeFocus()
+        elseif key == 0x72 and mods.ctrl then -- Ctrl+R
+            self.saveFunc()
+            local widgetName = widgetPathToWidgetName[filePath]
+            if mods.shift then
+                Spring.SendCommands("luaui reload")
+            elseif widgetName then
+                widgetHandler:DisableWidget(widgetName)
+                widgetHandler:EnableWidget(widgetName)
+            end
+        else
+            textEntry_KeyPress(self, key, mods, isRepeat)
+        end
+    end
+    
 
     local monospaceFont = MasterFramework:Font("fonts/monospaced/SourceCodePro-Medium.otf", 12)
     searchEntry = MasterFramework:TextEntry("", "Search", nil, monospaceFont)
