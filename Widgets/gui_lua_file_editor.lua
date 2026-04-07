@@ -225,7 +225,11 @@ local function lex(string)
 
         local character = string:sub(currentIndex, currentIndex)
 
-        if character:find(keywordOrAttributePrimaryCharacterSet) then
+        if whitespace[character] then
+            addToken(TOKEN_TYPE_WHITESPACE, currentIndex, currentIndex)
+        elseif punctuation[character] then
+            addToken(TOKEN_TYPE_PUNCTUATION, currentIndex, currentIndex)
+        elseif character:find(keywordOrAttributePrimaryCharacterSet) then
             local startIndex = currentIndex
             while currentIndex <= stringLength do
                 local character = string:sub(nextIndex, nextIndex)
@@ -289,10 +293,6 @@ local function lex(string)
             else
                 addToken(TOKEN_TYPE_PUNCTUATION, currentIndex, currentIndex)
             end
-        elseif punctuation[character] then
-            addToken(TOKEN_TYPE_PUNCTUATION, currentIndex, currentIndex)
-        elseif whitespace[character] then
-            addToken(TOKEN_TYPE_WHITESPACE, currentIndex, currentIndex)
         else
             addToken(TOKEN_TYPE_INVALID_CHARACTER, currentIndex, currentIndex)
         end
