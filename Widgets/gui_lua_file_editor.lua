@@ -178,10 +178,11 @@ local function parseMultiLine(string, startIndex)
     local nextIndex = startIndex + 1
 
     while nextIndex <= string:len() do
-        if string:sub(nextIndex, nextIndex) == "=" then
+        local nextCharacter = string:sub(nextIndex, nextIndex)
+        if nextCharacter == "=" then
             layerCount = layerCount + 1
             nextIndex = nextIndex + 1
-        elseif string:sub(nextIndex, nextIndex) == "[" then
+        elseif nextCharacter == "[" then
             nextIndex = nextIndex + 1
             break
         else 
