@@ -215,8 +215,9 @@ local function lex(string)
     end
 
     local nextIndex = 1
+    local stringLength = string:len()
     
-    while nextIndex <= string:len() do
+    while nextIndex <= stringLength do
         local shouldContinue
 
         local currentIndex = nextIndex
@@ -226,7 +227,7 @@ local function lex(string)
 
         if character:find(keywordOrAttributePrimaryCharacterSet) then
             local startIndex = currentIndex
-            while currentIndex <= string:len() do
+            while currentIndex <= stringLength do
                 local character = string:sub(nextIndex, nextIndex)
                 if not character or not character:find(keywordOrAttributeSecondaryCharacterSet) then
                     local keywordOrAttribute = string:sub(startIndex, currentIndex)
@@ -261,7 +262,7 @@ local function lex(string)
                 addToken(TOKEN_TYPE_MULTILINE_COMMENT, currentIndex, multilineCommentEndIndex)
                 nextIndex = multilineCommentEndIndex + 1
             else
-                local commentEnd = string:find("\n", nextIndex + 1) or string:len()
+                local commentEnd = string:find("\n", nextIndex + 1) or stringLength
                 addToken(TOKEN_TYPE_COMMENT, currentIndex, commentEnd)
                 nextIndex = commentEnd + 1
             end
