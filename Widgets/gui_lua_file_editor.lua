@@ -977,24 +977,26 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
         for tokenIndex = 1, tokenCount do
             -- local tokenIndex = tokenCount - (i - 1)
             local tokenType = tokenTypes[tokenIndex]
-            local color = tokenTypeColors[tokenType]
-            if color then
-                lastWasColored = true
-                stringComponents[componentIndex] = color
-                componentIndex = componentIndex + 1
-                stringComponents[componentIndex] = string:sub(characterIndex, tokenEndIndices[tokenIndex])
-                componentIndex = componentIndex + 1
-            else
-                if lastWasColored and (not (tokenType == TOKEN_TYPE_WHITESPACE)) then
-                    stringComponents[componentIndex] = "\b"
+            if tokenType ~= TOKEN_TYPE_WHITESPACE then
+                local color = tokenTypeColors[tokenType]
+                if color then
+                    lastWasColored = true
+                    stringComponents[componentIndex] = color
                     componentIndex = componentIndex + 1
-                    lastWasColored = false
+                    stringComponents[componentIndex] = string:sub(characterIndex, tokenEndIndices[tokenIndex])
+                    componentIndex = componentIndex + 1
+                else
+                    if lastWasColored then
+                        stringComponents[componentIndex] = "\b"
+                        componentIndex = componentIndex + 1
+                        lastWasColored = false
+                    end
+                    stringComponents[componentIndex] = string:sub(characterIndex, tokenEndIndices[tokenIndex])
+                    componentIndex = componentIndex + 1
                 end
-                stringComponents[componentIndex] = string:sub(characterIndex, tokenEndIndices[tokenIndex])
-                componentIndex = componentIndex + 1
-            end
 
-            characterIndex = tokenEndIndices[tokenIndex] + 1
+                characterIndex = tokenEndIndices[tokenIndex] + 1
+            end
         end
 
         return table.concat(stringComponents)
