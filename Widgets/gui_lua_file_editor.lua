@@ -987,7 +987,7 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
                     componentIndex = componentIndex + 1
                 else
                     if lastWasColored then
-                        stringComponents[componentIndex] = "\b"
+                        stringComponents[componentIndex] = "\255\255\255\255"
                         componentIndex = componentIndex + 1
                         lastWasColored = false
                     end
