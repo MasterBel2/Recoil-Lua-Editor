@@ -973,27 +973,18 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
         local stringComponents = {}
         local componentIndex = 1
         local characterIndex = 1
-        local lastWasColored = false
+        local lastColor
         for tokenIndex = 1, tokenCount do
-            -- local tokenIndex = tokenCount - (i - 1)
             local tokenType = tokenTypes[tokenIndex]
             if tokenType ~= TOKEN_TYPE_WHITESPACE then
                 local color = tokenTypeColors[tokenType]
-                if color then
-                    lastWasColored = true
-                    stringComponents[componentIndex] = color
-                    componentIndex = componentIndex + 1
-                    stringComponents[componentIndex] = string:sub(characterIndex, tokenEndIndices[tokenIndex])
-                    componentIndex = componentIndex + 1
-                else
-                    if lastWasColored then
-                        stringComponents[componentIndex] = "\255\255\255\255"
-                        componentIndex = componentIndex + 1
-                        lastWasColored = false
-                    end
-                    stringComponents[componentIndex] = string:sub(characterIndex, tokenEndIndices[tokenIndex])
+                if lastColor or color then
+                    lastColor = color
+                    stringComponents[componentIndex] = color or "\255\255\255\255"
                     componentIndex = componentIndex + 1
                 end
+                stringComponents[componentIndex] = string:sub(characterIndex, tokenEndIndices[tokenIndex])
+                componentIndex = componentIndex + 1
 
                 characterIndex = tokenEndIndices[tokenIndex] + 1
             end
