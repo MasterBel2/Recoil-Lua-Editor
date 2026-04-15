@@ -5,6 +5,7 @@ function widget:GetInfo()
         author = "MasterBel2",
         date = "April 2023",
         license = "GNU GPL, v2 or later",
+        version = "2026-04-rev1",
         layer = math.huge,
         handler = true
     }
