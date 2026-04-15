@@ -897,7 +897,7 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
                     lineTitleWidth, _ = lineTitle:Layout(math.huge, math.huge)
                     lineTitles[i] = lineTitle
                 else
-                    lineTitleWidth, _ = lineTitle:Size()
+                    lineTitleWidth, _ = lineTitle:Layout(math.huge, math.huge)
                 end
 
                 codeNumbersWidth = math_max(lineTitleWidth, codeNumbersWidth)
