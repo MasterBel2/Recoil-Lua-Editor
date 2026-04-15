@@ -991,6 +991,7 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
                 characterIndex = tokenEndIndices[tokenIndex] + 1
             end
         end
+        stringComponents[componentIndex] = string:sub(characterIndex, string:len())
 
         return table.concat(stringComponents)
     end
