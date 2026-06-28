@@ -338,24 +338,26 @@ local fileButtons = {}
 
 local errors = {}
 local errorDisplays = {}
-local errorHighlightID
+local errorHighlightIDs = {}
 
 local fileNamePattern = "([%w%s%._&-]+)/?$"
 
 local verticalSplitDividerXCache = {}
 
 local function ConfigureErrorHighlight()
-    if errors[filePath] then
+    for i = 1, errors[filePath] and #errors[filePath] or 0 do
         local lineStarts, lineEnds = textEntry.text:GetRawString():lines_MasterFramework()
-        local line = errors[filePath].line
+        local line = errors[filePath][i].line
 
-        if errorHighlightID then
-            textEntry.text:UpdateHighlight(errorHighlightID, errorHighlightColor, lineStarts[line], lineEnds[line] + 1)
+        if errorHighlightIDs[i] then
+            textEntry.text:UpdateHighlight(errorHighlightIDs[i], errorHighlightColor, lineStarts[line], lineEnds[line] + 1)
         else
-            errorHighlightID = textEntry.text:HighlightRange(errorHighlightColor, lineStarts[line], lineEnds[line] + 1)
+            errorHighlightIDs[i] = textEntry.text:HighlightRange(errorHighlightColor, lineStarts[line], lineEnds[line] + 1)
         end
-    elseif errorHighlightID then
-        textEntry.text:RemoveHighlight(errorHighlightID)
+    end
+    for i = errors[filePath] and #errors[filePath] + 1 or 1, #errorHighlightIDs do
+        textEntry.text:RemoveHighlight(errorHighlightIDs[i])
+        errorHighlightIDs[i] = nil
     end
 end
 
@@ -687,14 +689,14 @@ local fileNameToWidgetName = {}
 local runningWidgets = {}
 local messages = {}
 
-function ErrorDisplay()
+function ErrorDisplay(error)
     local text = MasterFramework:WrappingText("", MasterFramework.color.red)
     local errorDisplay
     errorDisplay = MasterFramework:Button(text, function()
         if errorDisplay.path then
             shownError = false
-            local lineStarts, lineEnds = textEntry.text:GetDisplayString():lines_MasterFramework()
-            SelectFile(errorDisplay.path, nil, lineStarts[errors[errorDisplay.path].line])
+            local lineStarts, lineEnds = textEntry.text:GetRawString():lines_MasterFramework()
+            SelectFile(errorDisplay.path, nil, lineStarts[error.line])
             RevealPath(errorDisplay.path)
         end
     end)
@@ -708,8 +710,8 @@ local failedToLoad = {}
 local consoleStrings = {
     ["^Loading:  (.*)"] = function(fullMessage, widgetPath)
         runningWidgets[widgetPath] = { enabled = true }
-        errorDisplays[widgetPath] = nil
-        errors[widgetPath] = nil
+        errorDisplays[widgetPath] = {}
+        errors[widgetPath] = {}
         if widgetPath == filePath then
             ConfigureErrorHighlight()
         end
@@ -722,8 +724,8 @@ local consoleStrings = {
         fileNameToWidgetName[fileName] = widgetName
         widgetPathToWidgetName["LuaUI/Widgets/" .. fileName] = widgetName
         runningWidgets["LuaUI/Widgets/" .. fileName] = { enabled = true }
-        errorDisplays["LuaUI/Widgets/" .. fileName] = nil
-        errors["LuaUI/Widgets/" .. fileName] = nil
+        errorDisplays["LuaUI/Widgets/" .. fileName] = {}
+        errors["LuaUI/Widgets/" .. fileName] = {}
 
         if path == filePath then
             ConfigureErrorHighlight()
@@ -732,8 +734,8 @@ local consoleStrings = {
     ["^Added:  (.*)"] = function(fullMessage, widgetPath) 
         -- We only get this if the widget was manually enabled by the user, not when the widget is loaded by the game. 
         runningWidgets[widgetPath] = { enabled = true }
-        errorDisplays[widgetPath] = nil
-        errors[widgetPath] = nil
+        errorDisplays[widgetPath] = {}
+        errors[widgetPath] = {}
         if widgetPath == filePath then
             ConfigureErrorHighlight()
         end
@@ -751,17 +753,23 @@ local consoleStrings = {
         local path, line, errorMessage = description:match("%[string \"([^\"]+)\"%]:(%d+): (.*)")
         -- local path = "LuaUI/Widgets/" .. fileName
         if path then
-            errors[path] = { message = errorMessage, line = tonumber(line) }
-            errorDisplays[path] = errorDisplays[path] or ErrorDisplay()
-            errorDisplays[path].descriptionText:SetString(widgetPathToWidgetName[path] or path .. ":" .. errorMessage)
-            errorDisplays[path].path = path
+            local error = { message = errorMessage, line = tonumber(line) }
+            local errorDisplay = ErrorDisplay(error)
+            errorDisplay.descriptionText:SetString(widgetPathToWidgetName[path] or path .. ":" .. errorMessage)
+            errorDisplay.path = path
+
+            errors[path] = { error }
+            errorDisplays[path] = { errorDisplay }
         end
     end,
     ["^Error in ([^%s\n]+)%(%): %[string \"([^\"]+)\"%]:(%d+): (.*)"] = function(fullMessage, func, path, line, errorMessage)
-        errors[path] = { message = errorMessage, line = tonumber(line), func = func }
-        errorDisplays[path] = errorDisplays[path] or ErrorDisplay()
-        errorDisplays[path].descriptionText:SetString(widgetPathToWidgetName[path] or path .. ":" .. errorMessage)
-        errorDisplays[path].path = path
+        local error = { message = errorMessage, line = tonumber(line), func = func }
+        local errorDisplay = ErrorDisplay(error)
+
+        errorDisplay.descriptionText:SetString(widgetPathToWidgetName[path] or path .. ":" .. errorMessage)
+        errorDisplay.path = path
+        table.insert(errorDisplays[path], errorDisplay)
+        table.insert(errors[path], error)
 
         if path == filePath then
             ConfigureErrorHighlight()
@@ -1004,7 +1012,12 @@ end
 ------------------------------------------------------------------------------------------------------------
 
 function widget:Update()
-    local errors = table.mapToArray(errorDisplays, function(name, display) return { name = name, display = display } end)
+    local errors = {}
+    for fileName, pathErrorDisplays in pairs(errorDisplays) do
+        for i = 1, #pathErrorDisplays do
+            errors[#errors + 1] = { name = fileName, display = pathErrorDisplays[i] }
+        end
+    end
     table.sort(errors, function(a, b)
         return a.name > b.name
     end)
