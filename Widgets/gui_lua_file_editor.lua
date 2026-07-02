@@ -707,38 +707,41 @@ end
 
 local failedToLoad = {}
 
+local function RegisterLoadedFile(path)
+    runningWidgets[path] = { enabled = true }
+    errorDisplays[path] = {}
+    errors[path] = {}
+    
+    if path == filePath then
+        ConfigureErrorHighlight()
+    end
+end
+
+local function RegisterLoadedWidget(widgetName, fileName)
+    widgetNameToFileName[widgetName] = fileName
+    fileNameToWidgetName[fileName] = widgetName
+    widgetPathToWidgetName["LuaUI/Widgets/" .. fileName] = widgetName
+    
+    RegisterLoadedFile("LuaUI/Widgets/" .. fileName)
+end
+
+function widget:DebugInfo()
+    return { widgetNameToFileName = widgetNameToFileName, fileNameToWidgetName = fileNameToWidgetName, widgetPathToWidgetName = widgetPathToWidgetName, runningWidgets = runningWidgets }
+end
+
 local consoleStrings = {
     ["^Loading:  (.*)"] = function(fullMessage, widgetPath)
-        runningWidgets[widgetPath] = { enabled = true }
-        errorDisplays[widgetPath] = {}
-        errors[widgetPath] = {}
-        if widgetPath == filePath then
-            ConfigureErrorHighlight()
-        end
+        RegisterLoadedFile(widgetPath)
     end,
     ["^Loading widget from user:  (.+[^%s])%s+<([^%s]+)> ...$"] = function(fullMessage, widgetName, fileName)
         -- If we get this, we dont get an "Added" message when the widget is successfully loaded
         failedToLoad["LuaUI/Widgets/" .. fileName] = nil
         
-        widgetNameToFileName[widgetName] = fileName
-        fileNameToWidgetName[fileName] = widgetName
-        widgetPathToWidgetName["LuaUI/Widgets/" .. fileName] = widgetName
-        runningWidgets["LuaUI/Widgets/" .. fileName] = { enabled = true }
-        errorDisplays["LuaUI/Widgets/" .. fileName] = {}
-        errors["LuaUI/Widgets/" .. fileName] = {}
-
-        if path == filePath then
-            ConfigureErrorHighlight()
-        end
+        RegisterLoadedWidget(widgetName, fileName)
     end,
     ["^Added:  (.*)"] = function(fullMessage, widgetPath) 
-        -- We only get this if the widget was manually enabled by the user, not when the widget is loaded by the game. 
-        runningWidgets[widgetPath] = { enabled = true }
-        errorDisplays[widgetPath] = {}
-        errors[widgetPath] = {}
-        if widgetPath == filePath then
-            ConfigureErrorHighlight()
-        end
+        -- We only get this if the widget was manually enabled by the user, not when the widget is loaded by the game.
+        RegisterLoadedFile(widgetPath)
     end,
     ["^Removed:  (.*)"] = function(fullMessage, widgetPath) -- disabled by user
         runningWidgets[widgetPath] = nil
@@ -1213,6 +1216,16 @@ function widget:Initialize()
     local buffer = Spring.GetConsoleBuffer()
     for _, line in ipairs(buffer) do
         widget:AddConsoleLine(line.text)
+    end
+    
+    for widgetName, widgetInfo in pairs(widgetHandler.knownWidgets) do
+        runningWidgets[widgetInfo.filename] = widgetInfo.active or nil
+        widgetPathToWidgetName[widgetInfo.filename] = widgetName
+        widgetNameToFileName[widgetName] = widgetInfo.basename
+        fileNameToWidgetName[widgetInfo.basename] = widgetName
+        
+        errorDisplays[widgetInfo.filename] = {}
+        errors[widgetInfo.filename] = {}
     end
 end
 
