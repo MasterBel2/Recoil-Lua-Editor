@@ -851,10 +851,10 @@ function WG.LuaTextEntry(framework, content, placeholderText, saveFunc)
         local rawString = textEntry.text:GetRawString()
         local clipped = rawString:sub(1, self.selectionBegin)
         while true do
-            local lineStart, _, spaces, text = clipped:find("\n(%s*)([^\n]*)$")
+            local lineStart, _, spaces, text = clipped:find("\n([ \t]*)([^\n]*)$")
             
             if not lineStart then
-                local spaces, text = clipped:match("^(%s*)([^\n]*)$")
+                local spaces, text = clipped:match("^([ \t]*)([^\n]*)$")
                 self:InsertText("\n" .. spaces)
                 return
             end
