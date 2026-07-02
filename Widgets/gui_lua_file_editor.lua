@@ -1216,7 +1216,6 @@ function widget:Initialize()
         RevealPath(filePath)
     end
 
-
     local buffer = Spring.GetConsoleBuffer()
     for _, line in ipairs(buffer) do
         widget:AddConsoleLine(line.text)
