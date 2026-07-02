@@ -1,12 +1,13 @@
 verticalSplitDividerXCache = {}
 
-function VerticalSplit(left, right, yAnchor, key)
+function VerticalSplit(left, right, yAnchor, key, proportionallyResize)
     local split = MasterFramework:Component(true, false)
     local isDragging
 
     local minWidth = MasterFramework:AutoScalingDimension(40)
 
     local dividerWidth = MasterFramework:AutoScalingDimension(2)
+    local previousAvailableWidth
     local width, height
     local dividerRect = MasterFramework:Background(MasterFramework:Rect(dividerWidth, function() return height end), { MasterFramework.color.hoverColor }, nil)
 
@@ -53,6 +54,12 @@ function VerticalSplit(left, right, yAnchor, key)
         if previousScale ~= MasterFramework.combinedScaleFactor then
             dividerX = dividerX / previousScale * MasterFramework.combinedScaleFactor
             previousScale = MasterFramework.combinedScaleFactor
+        end
+
+        if proportionallyResize and (availableWidth ~= previousAvailableWidth) then
+            proportion = availableWidth / (previousAvailableWidth or availableWidth)
+            previousAvailableWidth = availableWidth
+            dividerX = dividerX * proportion
         end
 
         dividerX = math.min(math.max((minWidth() - dividerWidth()) / 2, dividerX), availableWidth - (minWidth() - dividerWidth()) / 2)

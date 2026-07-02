@@ -636,9 +636,10 @@ function widget:Initialize()
                     MasterFramework:MarginAroundRect(
                     VerticalSplit(
                         tabBar,
-                        VerticalSplit(mainEditor, secondaryEditor, 1, "Lua File Editor Split: Main Editor & Secondary Editor"),
+                        VerticalSplit(mainEditor, secondaryEditor, 1, "Lua File Editor Split: Main Editor & Secondary Editor", true),
                         1,
-                        "Lua File Editor Split: Side Bar & Editors"
+                        "Lua File Editor Split: Side Bar & Editors",
+                        false
                     ),
                     MasterFramework:AutoScalingDimension(20),
                     MasterFramework:AutoScalingDimension(20),
