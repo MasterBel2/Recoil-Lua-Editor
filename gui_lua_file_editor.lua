@@ -34,15 +34,11 @@ VFS.Include(LUAUI_DIRNAME .. "Widgets/Lua File Editor/Include/TabBar.lua")
 -- Widget Internals
 ------------------------------------------------------------------------------------------------------------
 
-local fileName
-local filePath
-local showFullFilePath
-
 local tabBar
 local searchEntry
+local mainEditor
+local secondaryEditor
 
-local textEntry
-local codeScrollContainer
 local fileBrowserStackContents
 
 local editedFileColor
@@ -52,12 +48,9 @@ local errorHighlightColor
 local searchHighlightColor
 local selectedSearchHighlightColor
 
-local fileNameText
-local saveButton
-local revertButton
-
 local lastSelectedSearchResult
 local searchResults = {}
+local searchStack
 
 local editedFiles = {}
 local fileScrollIndices = {}
@@ -71,46 +64,58 @@ local errorHighlightIDs = {}
 
 local fileNamePattern = "([%w%s%._&-]+)/?$"
 
-local function ConfigureErrorHighlight()
-    for i = 1, errors[filePath] and #errors[filePath] or 0 do
-        local lineStarts, lineEnds = textEntry.text:GetRawString():lines_MasterFramework()
-        local line = errors[filePath][i].line
+-- Only use these to cache between SetConfigData and Initialize
+local _init_mainEditorFilePath
+local _init_secondaryEditorFilePath
 
-        if errorHighlightIDs[i] then
-            textEntry.text:UpdateHighlight(errorHighlightIDs[i], errorHighlightColor, lineStarts[line], lineEnds[line] + 1)
+local function Search()
+    local searchTerm = searchEntry.text:GetRawString()
+
+    for _, result in ipairs(searchResults) do
+        _ = result.highlightID and mainEditor.textEntry.text:RemoveHighlight(result.highlightID)
+    end
+
+    if searchTerm:len() < 3 then
+        searchStack:SetMembers({})
+        return
+    end
+
+    local searchBegin = 1
+    searchResults = {}
+    lastSelectedSearchResult = nil
+    local searchee = mainEditor.textEntry.text:GetRawString()
+    while searchBegin < searchee:len() do
+        local start, _end = searchee:find(searchTerm, searchBegin)
+        if start and _end then
+            table.insert(searchResults, { 
+                filePath = mainEditor:GetFilePath(), 
+                start = start, 
+                _end = _end, 
+                highlightID = mainEditor.textEntry.text:HighlightRange(searchHighlightColor, start, _end + 1)
+            })
+            searchBegin = _end + 1
         else
-            errorHighlightIDs[i] = textEntry.text:HighlightRange(errorHighlightColor, lineStarts[line], lineEnds[line] + 1)
+            break
         end
     end
-    for i = errors[filePath] and #errors[filePath] + 1 or 1, #errorHighlightIDs do
-        textEntry.text:RemoveHighlight(errorHighlightIDs[i])
-        errorHighlightIDs[i] = nil
-    end
-end
 
-local function SelectFile(path, _fileName, targetCharacterIndex)
-    textEntry.placeholder:SetString("")
-    if VFS.FileExists(path, VFS.RAW) then
-        fileName = _fileName or path:match(fileNamePattern)
-        filePath = path
-        textEntry.text:SetString(editedFiles[path] or VFS.LoadFile(path))
-        if textEntry.text.availableWidth and textEntry.text.availableHeight then
-            textEntry.text:Layout(textEntry.text.availableWidth, textEntry.text.availableHeight)
-            
-            targetCharacterIndex = targetCharacterIndex or fileScrollIndices[path]
-            if targetCharacterIndex then
-                local lineCount = #textEntry.text:GetDisplayString():sub(1, textEntry.text:RawIndexToDisplayIndex(targetCharacterIndex)):lines_MasterFramework()
-                local offset = (lineCount - 10) * textEntry.text._readOnly_font:ScaledSize()
-                codeScrollContainer.viewport:SetYOffset(math.max(0, offset))
-            else
-                codeScrollContainer.viewport:SetYOffset(0)
+    searchStack:SetMembers(table.imap(searchResults, function(_, result)
+        return MasterFramework:Button(
+            MasterFramework:WrappingText(
+                "\255\122\122\122" .. (searchee:sub(1, result.start - 1):match("[^\n]*[\n][^\n]*$") or "") .. 
+                "\255\255\255\255" .. searchee:sub(result.start, result._end) ..
+                "\255\122\122\122" .. (searchee:match("([^\n]*[\n][^\n]*)", result._end + 1) or "")
+            ),
+            function()
+                _ = lastSelectedSearchResult and mainEditor.textEntry.text:UpdateHighlight(lastSelectedSearchResult.highlightID, searchHighlightColor, lastSelectedSearchResult.start, lastSelectedSearchResult._end + 1)
+                mainEditor.textEntry.text:UpdateHighlight(result.highlightID, selectedSearchHighlightColor, result.start, result._end + 1)
+                lastSelectedSearchResult = result
+                mainEditor:SelectFile(result.filePath, nil, result.start)
             end
-            fileNameDisplay.visual:SetString(showFullFilePath and path or fileName)
-            ConfigureErrorHighlight()
-        end
-    end
+        )
+    end))
+    mainEditor.textEntry.text:NeedsRedraw()
 end
-
 
 local function RevealPath(path)
     if path == nil or path == "" then return true end
@@ -118,7 +123,6 @@ local function RevealPath(path)
         return false
     end
     if fileButtons[path] then
-        SelectFile(path)
         return true
     elseif folderMenus[path] then
         folderMenus[path]:ShowChildren()
@@ -151,28 +155,160 @@ local function MarkFileEdited(path, isEdited)
     end
 end
 
-local function Save()
-    if not filePath then return end
-    local fh = io.open(filePath, "w")
-    fh:write(textEntry.text:GetRawString())
-    fh:close()
-    
-    MarkFileEdited(filePath, false)
-    editedFiles[filePath] = nil
+local function Editor()
+    local fileName
+    local filePath
+    local showFullFilePath
+    local editor
+
+    local textEntry = WG.LuaTextEntry(MasterFramework, "", "Select File To Edit", function() editor:Save() end)
+
+    local textEntry_KeyPress = textEntry.KeyPress
+    function textEntry:KeyPress(key, mods, isRepeat)
+        if key == 0x65 and mods.ctrl then -- Ctrl+F
+            tabBar:Select(3)
+        elseif key == 0x66 and mods.ctrl then -- Ctrl+F
+            tabBar:Select(2)
+            searchEntry:TakeFocus()
+        elseif key == 0x72 and mods.ctrl then -- Ctrl+R
+            self.saveFunc()
+            local widgetName = widgetPathToWidgetName[filePath]
+            if not widgetName then return end
+            if mods.shift then
+                Spring.SendCommands("luaui reload")
+            elseif widgetName then
+                widgetHandler:DisableWidget(widgetName)
+                widgetHandler:EnableWidget(widgetName)
+            end
+        else
+            textEntry_KeyPress(self, key, mods, isRepeat)
+        end
+    end
+
+    local fileNameDisplay = MasterFramework:Button(MasterFramework:Text("<no file>", MasterFramework:Color(0.3, 0.3, 0.3, 1)), function(fileNameDisplay)
+        showFullFilePath = not showFullFilePath
+        fileNameDisplay.visual:SetString(showFullFilePath and filePath or fileName or "<no file>")
+    end)
+    local saveButton = MasterFramework:Button(MasterFramework:Text("Save", MasterFramework:Color(0.3, 0.3, 0.6, 1)), function(button)
+        editor:Save()
+    end)
+    local revertButton = MasterFramework:Button(MasterFramework:Text("Revert", MasterFramework:Color(0.6, 0.3, 0.3, 1)), function(button)
+        if not filePath then return end
+        textEntry.text:SetString(VFS.LoadFile(filePath))
+        MarkFileEdited(filePath, false)
+        editedFiles[filePath] = nil
+    end)
+
+    local codeScrollContainer = MasterFramework:VerticalScrollContainer(textEntry)
+
+    -- Capture this after we do our first SelectFile so we don't overwrite the loaded value until the UI is properly configured.
+    local codeScrollContainer_viewport_SetYOffset = codeScrollContainer.viewport.SetYOffset
+    local indexHighlightID
+    function codeScrollContainer.viewport:SetYOffset(newYOffset)
+        codeScrollContainer_viewport_SetYOffset(self, newYOffset)
+        if not filePath then return end
+        local _, yOffset = self:GetOffsets()
+        local x, y = textEntry.text:CachedPositionTranslatedToGlobalContext()
+        if not x or not y then return end
+        local _, height = textEntry.text:Size()
+        fileScrollIndices[filePath] = textEntry.text:CoordinateToCharacterDisplayIndex(x, y + height - yOffset)
+    end
+
+    editor = MasterFramework:VerticalHungryStack(
+        MasterFramework:HorizontalStack({
+                fileNameDisplay,
+                saveButton,
+                revertButton
+            }, 
+            MasterFramework:AutoScalingDimension(8), 0.5
+        ),
+        TakeAvailableWidth(TakeAvailableHeight(codeScrollContainer)),
+        MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)), 
+        0
+    )
+
+    function editor:GetFilePath()
+        return filePath
+    end
+
+    function editor:Save()
+        if not filePath then return end
+        local fh = io.open(filePath, "w")
+        fh:write(textEntry.text:GetRawString())
+        fh:close()
+        
+        MarkFileEdited(filePath, false)
+        editedFiles[filePath] = nil
+    end
+
+    function editor:SelectFile(path, _fileName, targetCharacterIndex)
+        textEntry.placeholder:SetString("")
+        if VFS.FileExists(path, VFS.RAW) then
+            fileName = _fileName or path:match(fileNamePattern)
+            filePath = path
+            textEntry.text:SetString(editedFiles[path] or VFS.LoadFile(path))
+            if textEntry.text.availableWidth and textEntry.text.availableHeight then
+                textEntry.text:Layout(textEntry.text.availableWidth, textEntry.text.availableHeight)
+                
+                targetCharacterIndex = targetCharacterIndex or fileScrollIndices[path]
+                if targetCharacterIndex then
+                    local lineCount = #textEntry.text:GetDisplayString():sub(1, textEntry.text:RawIndexToDisplayIndex(targetCharacterIndex)):lines_MasterFramework()
+                    local offset = (lineCount - 10) * textEntry.text._readOnly_font:ScaledSize()
+                    codeScrollContainer.viewport:SetYOffset(math.max(0, offset))
+                else
+                    codeScrollContainer.viewport:SetYOffset(0)
+                end
+                fileNameDisplay.visual:SetString(showFullFilePath and path or fileName)
+                self:ConfigureErrorHighlight()
+            end
+        end
+    end
+
+    function editor:ConfigureErrorHighlight()
+        for i = 1, errors[filePath] and #errors[filePath] or 0 do
+            local lineStarts, lineEnds = textEntry.text:GetRawString():lines_MasterFramework()
+            local line = errors[filePath][i].line
+
+            if errorHighlightIDs[i] then
+                textEntry.text:UpdateHighlight(errorHighlightIDs[i], errorHighlightColor, lineStarts[line], lineEnds[line] + 1)
+            else
+                errorHighlightIDs[i] = textEntry.text:HighlightRange(errorHighlightColor, lineStarts[line], lineEnds[line] + 1)
+            end
+        end
+        for i = errors[filePath] and #errors[filePath] + 1 or 1, #errorHighlightIDs do
+            textEntry.text:RemoveHighlight(errorHighlightIDs[i])
+            errorHighlightIDs[i] = nil
+        end
+    end
+
+    textEntry:SetPostEditEffect(function()
+        if filePath then 
+            MarkFileEdited(filePath, true)
+            editedFiles[filePath] = textEntry.text:GetRawString() -- Would be nice to cache the `no file` case also?
+        end
+
+        Search()
+    end)
+
+    editor._textEntry = textEntry
+
+    return editor
 end
 
 function widget:GetConfigData()
     return {
         fileScrollIndices = fileScrollIndices,
         editedFiles = editedFiles,
-        filePath = filePath,
+        mainEditorFilePath = mainEditor:GetFilePath(),
+        secondaryEditorFilePath = secondaryEditor:GetFilePath(),
         verticalSplitDividerXCache = verticalSplitDividerXCache
     }
 end
 function widget:SetConfigData(data)
     fileScrollIndices = data.fileScrollIndices or {}
     editedFiles = data.editedFiles or {}
-    filePath = data.filePath
+    _init_mainEditorFilePath = data.mainEditorFilePath or data.filePath
+    _init_secondaryEditorFilePath = data.secondaryEditorFilePath
     verticalSplitDividerXCache = data.verticalSplitDividerXCache or {}
     for path, _ in pairs(editedFiles) do
         MarkFileEdited(path, true)
@@ -181,9 +317,17 @@ end
 
 local function UIFileButton(path)
     local _fileName = path:match(fileNamePattern)
-    local button = MasterFramework:Button(MasterFramework:Text(_fileName, editedFiles[path] and editedFileColor or savedFileColor), function()
-        SelectFile(path, _fileName)
-    end)
+    local button = MasterFramework:Button(
+        MasterFramework:Text(_fileName, editedFiles[path] and editedFileColor or savedFileColor), 
+        function()
+            local _, ctrl = Spring.GetModKeyState()
+            if ctrl then
+                secondaryEditor:SelectFile(path, _fileName)
+            else
+                mainEditor:SelectFile(path, _fileName)
+            end
+        end
+    )
 
     fileButtons[path] = button
 
@@ -284,8 +428,8 @@ function ErrorDisplay(error)
     errorDisplay = MasterFramework:Button(text, function()
         if errorDisplay.path then
             shownError = false
-            local lineStarts, lineEnds = textEntry.text:GetRawString():lines_MasterFramework()
-            SelectFile(errorDisplay.path, nil, lineStarts[error.line])
+            local lineStarts, lineEnds = mainEditor.textEntry.text:GetRawString():lines_MasterFramework()
+            mainEditor:SelectFile(errorDisplay.path, nil, lineStarts[error.line])
             RevealPath(errorDisplay.path)
         end
     end)
@@ -301,8 +445,11 @@ local function RegisterLoadedFile(path)
     errorDisplays[path] = {}
     errors[path] = {}
     
-    if path == filePath then
-        ConfigureErrorHighlight()
+    if path == mainEditor:GetFilePath() then
+        mainEditor:ConfigureErrorHighlight()
+    end
+    if path == secondaryEditor:GetFilePath() then
+        secondaryEditor:ConfigureErrorHighlight()
     end
 end
 
@@ -335,8 +482,11 @@ local consoleStrings = {
     ["^Removed:  (.*)"] = function(fullMessage, widgetPath) -- disabled by user
         runningWidgets[widgetPath] = nil
 
-        if widgetPath == filePath then
-            ConfigureErrorHighlight()
+        if widgetPath == mainEditor:GetFilePath() then
+            mainEditor:ConfigureErrorHighlight()
+        end
+        if widgetPath == secondaryEditor:GetFilePath() then
+            secondaryEditor:ConfigureErrorHighlight()
         end
     end,
     ["^Failed to load: (.+[^%s])  %((.*)%)"] = function(fullMessage, fileName, description) -- widget crash
@@ -367,8 +517,11 @@ local consoleStrings = {
         table.insert(errorDisplays[path], errorDisplay)
         table.insert(errors[path], error)
 
-        if path == filePath then
-            ConfigureErrorHighlight()
+        if path == mainEditor:GetFilePath() then
+            mainEditor:ConfigureErrorHighlight()
+        end
+        if path == secondaryEditor:GetFilePath() then
+            secondaryEditor:ConfigureErrorHighlight()
         end
     end,
     -- ["^Error(.+)%[string \"([^\"]+)\"%]:(%d+): (.*)"] = function(fullMessage, func, path, line, errorMessage)
@@ -384,9 +537,12 @@ local consoleStrings = {
     --     table.insert(errorDisplays[path], errorDisplay)
     --     table.insert(errors[path], error)
 
-    --     if path == filePath then
-    --         ConfigureErrorHighlight()
-    --     end
+    --     if path == mainEditor:GetFilePath() then
+        --     mainEditor:ConfigureErrorHighlight()
+        -- end
+        -- if path == secondaryEditor:GetFilePath() then
+        --     secondaryEditor:ConfigureErrorHighlight()
+        -- end
     -- end,
     ["^Removed widget: (.*)"] = function(fullMessage, widgetName) -- widget crash
         -- runningWidgets["LuaUI/Widgets/" .. widgetNameToFileName[widgetName]].enabled = false
@@ -436,32 +592,9 @@ function widget:Initialize()
 
     table = MasterFramework.table
 
-    textEntry = WG.LuaTextEntry(MasterFramework, "", "Select File To Edit", Save)
-    local textEntry_KeyPress = textEntry.KeyPress
-    function textEntry:KeyPress(key, mods, isRepeat)
-        if key == 0x65 and mods.ctrl then -- Ctrl+F
-            tabBar:Select(3)
-        elseif key == 0x66 and mods.ctrl then -- Ctrl+F
-            tabBar:Select(2)
-            searchEntry:TakeFocus()
-        elseif key == 0x72 and mods.ctrl then -- Ctrl+R
-            self.saveFunc()
-            local widgetName = widgetPathToWidgetName[filePath]
-            if mods.shift then
-                Spring.SendCommands("luaui reload")
-            elseif widgetName then
-                widgetHandler:DisableWidget(widgetName)
-                widgetHandler:EnableWidget(widgetName)
-            end
-        else
-            textEntry_KeyPress(self, key, mods, isRepeat)
-        end
-    end
-    
-
     local monospaceFont = MasterFramework:Font("fonts/monospaced/SourceCodePro-Medium.otf", 12)
     searchEntry = MasterFramework:TextEntry("", "Search", nil, monospaceFont)
-    local searchStack = MasterFramework:VerticalStack({}, MasterFramework:AutoScalingDimension(2), 0)
+    searchStack = MasterFramework:VerticalStack({}, MasterFramework:AutoScalingDimension(2), 0)
 
     function searchEntry:SetPostEditEffect(postEditEffect)
         local function ReplaceEditFunction(name)
@@ -478,85 +611,10 @@ function widget:Initialize()
         ReplaceEditFunction("editDelete")
     end
 
-    local function Search()
-        local searchTerm = searchEntry.text:GetRawString()
-
-        for _, result in ipairs(searchResults) do
-            _ = result.highlightID and textEntry.text:RemoveHighlight(result.highlightID)
-        end
-
-        if searchTerm:len() < 3 then
-            searchStack:SetMembers({})
-            return
-        end
-
-        local searchBegin = 1
-        searchResults = {}
-        lastSelectedSearchResult = nil
-        local searchee = textEntry.text:GetRawString()
-        while searchBegin < searchee:len() do
-            local start, _end = searchee:find(searchTerm, searchBegin)
-            if start and _end then
-                table.insert(searchResults, { 
-                    filePath = filePath, 
-                    start = start, 
-                    _end = _end, 
-                    highlightID = textEntry.text:HighlightRange(searchHighlightColor, start, _end + 1)
-                })
-                searchBegin = _end + 1
-            else
-                break
-            end
-        end
-
-        searchStack:SetMembers(table.imap(searchResults, function(_, result)
-            return MasterFramework:Button(
-                MasterFramework:WrappingText(
-                    "\255\122\122\122" .. (searchee:sub(1, result.start - 1):match("[^\n]*[\n][^\n]*$") or "") .. 
-                    "\255\255\255\255" .. searchee:sub(result.start, result._end) ..
-                    "\255\122\122\122" .. (searchee:match("([^\n]*[\n][^\n]*)", result._end + 1) or "")
-                ),
-                function()
-                    _ = lastSelectedSearchResult and textEntry.text:UpdateHighlight(lastSelectedSearchResult.highlightID, searchHighlightColor, lastSelectedSearchResult.start, lastSelectedSearchResult._end + 1)
-                    textEntry.text:UpdateHighlight(result.highlightID, selectedSearchHighlightColor, result.start, result._end + 1)
-                    lastSelectedSearchResult = result
-                    SelectFile(result.filePath, nil, result.start)
-                end
-            )
-        end))
-        textEntry.text:NeedsRedraw()
-    end
-
-    textEntry:SetPostEditEffect(function()
-        if filePath then 
-            MarkFileEdited(filePath, true)
-            editedFiles[filePath] = textEntry.text:GetRawString() -- Would be nice to cache the `no file` case also?
-        end
-
-        saveButton.visual:SetString("Save")
-        revertButton.visual:SetString("Revert")
-
-        Search()
-    end)
-
     searchEntry:SetPostEditEffect(Search)
 
     editedFileColor = MasterFramework:Color(1, 0.6, 0.3, 1)
     savedFileColor = MasterFramework:Color(1, 1, 1, 1)
-
-    fileNameDisplay = MasterFramework:Button(MasterFramework:Text("<no file>", MasterFramework:Color(0.3, 0.3, 0.3, 1)), function()
-        showFullFilePath = not showFullFilePath
-        fileNameDisplay.visual:SetString(showFullFilePath and filePath or fileName or "<no file>")
-    end)
-    saveButton = MasterFramework:Button(MasterFramework:Text("Save", MasterFramework:Color(0.3, 0.3, 0.6, 1)), function(button)
-        Save()
-    end)
-    revertButton = MasterFramework:Button(MasterFramework:Text("Revert", MasterFramework:Color(0.6, 0.3, 0.3, 1)), function(button)
-        if not filePath then return end
-        textEntry.text:SetString(VFS.LoadFile(filePath))
-        MarkFileEdited(filePath, false)
-        editedFiles[filePath] = nil
-    end)
 
     errorStack = MasterFramework:VerticalStack({}, MasterFramework:AutoScalingDimension(2), 0)
 
@@ -568,7 +626,8 @@ function widget:Initialize()
         --{ title = "Profile", display =  }
     })
 
-    codeScrollContainer = MasterFramework:VerticalScrollContainer(textEntry)
+    mainEditor = Editor()
+    secondaryEditor = Editor()
 
     local resizableFrame = MasterFramework:ResizableMovableFrame(
         "Lua File Editor",
@@ -577,20 +636,9 @@ function widget:Initialize()
                     MasterFramework:MarginAroundRect(
                     VerticalSplit(
                         tabBar,
-                        MasterFramework:VerticalHungryStack(
-                            MasterFramework:HorizontalStack({
-                                    fileNameDisplay,
-                                    saveButton,
-                                    revertButton
-                                }, 
-                                MasterFramework:AutoScalingDimension(8), 0.5
-                            ),
-                            TakeAvailableWidth(TakeAvailableHeight(codeScrollContainer)),
-                            MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)), 
-                            0
-                        ),
+                        VerticalSplit(mainEditor, secondaryEditor, 1, "Lua File Editor Split: Main Editor & Secondary Editor"),
                         1,
-                        "Lua File Editor Split: Side Bar & Editor 1"
+                        "Lua File Editor Split: Side Bar & Editors"
                     ),
                     MasterFramework:AutoScalingDimension(20),
                     MasterFramework:AutoScalingDimension(20),
@@ -608,21 +656,12 @@ function widget:Initialize()
 
     key = MasterFramework:InsertElement(resizableFrame, "Lua File Editor", MasterFramework.layerRequest.anywhere())
 
-    if filePath then
-        SelectFile(filePath)
-        RevealPath(filePath)
+    if _init_mainEditorFilePath then
+        mainEditor:SelectFile(_init_mainEditorFilePath)
+        RevealPath(_init_mainEditorFilePath)
     end
-
-    -- Capture this after we do our first SelectFile so we don't overwrite the loaded value until the UI is properly configured.
-    local codeScrollContainer_viewport_SetYOffset = codeScrollContainer.viewport.SetYOffset
-    local indexHighlightID
-    function codeScrollContainer.viewport:SetYOffset(newYOffset)
-        codeScrollContainer_viewport_SetYOffset(self, newYOffset)
-        local _, yOffset = self:GetOffsets()
-        local x, y = textEntry.text:CachedPositionTranslatedToGlobalContext()
-        if not x or not y then return end
-        local _, height = textEntry.text:Size()
-        fileScrollIndices[filePath] = textEntry.text:CoordinateToCharacterDisplayIndex(x, y + height - yOffset)
+    if _init_secondaryEditorFilePath then
+        secondaryEditor:SelectFile(_init_secondaryEditorFilePath)
     end
 
     local buffer = Spring.GetConsoleBuffer()
