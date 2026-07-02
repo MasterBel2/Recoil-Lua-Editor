@@ -769,6 +769,10 @@ local consoleStrings = {
         local error = { message = errorMessage, line = tonumber(line), func = func }
         local errorDisplay = ErrorDisplay(error)
 
+        -- I don't know why, but some errors don't report the widget they're associated with.
+        if not errors[path] then errors[path] = {} end
+        if not errorDisplays[path] then errorDisplays[path] = {} end
+
         errorDisplay.descriptionText:SetString(widgetPathToWidgetName[path] or path .. ":" .. errorMessage)
         errorDisplay.path = path
         table.insert(errorDisplays[path], errorDisplay)
