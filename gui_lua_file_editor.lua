@@ -14,7 +14,6 @@ end
 -- MasterFramework
 ------------------------------------------------------------------------------------------------------------
 
-local MasterFramework
 local requiredFrameworkVersion = "Dev"
 local key
 
@@ -26,33 +25,10 @@ local math_max = math.max
 local math_min = math.min
 
 VFS.Include(LUAUI_DIRNAME .. "Widgets/Lua File Editor/Include/LuaTextEntry.lua")
-
-------------------------------------------------------------------------------------------------------------
--- Interface
-------------------------------------------------------------------------------------------------------------
-
-local function TakeAvailableHeight(body)
-    local cachedHeight
-    local cachedAvailableHeight
-    return {
-        Layout = function(_, availableWidth, availableHeight)
-            local width, height = body:Layout(availableWidth, availableHeight)
-            cachedHeight = height
-            cachedAvailableHeight = math_max(availableHeight, height)
-            return width, cachedAvailableHeight
-        end,
-        Position = function(_, x, y) body:Position(x, y + cachedAvailableHeight - cachedHeight) end
-    }
-end
-local function TakeAvailableWidth(body)
-    return {
-        Layout = function(_, availableWidth, availableHeight)
-            local _, height = body:Layout(availableWidth, availableHeight)
-            return availableWidth, height
-        end,
-        Position = function(_, x, y) body:Position(x, y) end
-    }
-end
+VFS.Include(LUAUI_DIRNAME .. "Widgets/Lua File Editor/Include/TakeAvailableWidth.lua")
+VFS.Include(LUAUI_DIRNAME .. "Widgets/Lua File Editor/Include/TakeAvailableHeight.lua")
+VFS.Include(LUAUI_DIRNAME .. "Widgets/Lua File Editor/Include/VerticalSplit.lua")
+VFS.Include(LUAUI_DIRNAME .. "Widgets/Lua File Editor/Include/TabBar.lua")
 
 ------------------------------------------------------------------------------------------------------------
 -- Widget Internals
@@ -94,8 +70,6 @@ local errorDisplays = {}
 local errorHighlightIDs = {}
 
 local fileNamePattern = "([%w%s%._&-]+)/?$"
-
-local verticalSplitDividerXCache = {}
 
 local function ConfigureErrorHighlight()
     for i = 1, errors[filePath] and #errors[filePath] or 0 do
@@ -296,140 +270,6 @@ local function UIFolderMenu(path)
     folderMenus[path] = folderMenu
 
     return folderMenu
-end
-
-local function VerticalSplit(left, right, yAnchor, key)
-    local split = MasterFramework:Component(true, false)
-    local isDragging
-
-    local minWidth = MasterFramework:AutoScalingDimension(40)
-
-    local dividerWidth = MasterFramework:AutoScalingDimension(2)
-    local width, height
-    local dividerRect = MasterFramework:Background(MasterFramework:Rect(dividerWidth, function() return height end), { MasterFramework.color.hoverColor }, nil)
-
-    local previousScale = MasterFramework.combinedScaleFactor
-
-    local dragStartX
-    local dividerStartX
-    local dividerX = (verticalSplitDividerXCache[key] or 100) * previousScale
-
-    local hoverColor = MasterFramework.color.hoverColor
-
-    local divider = MasterFramework:MouseOverChangeResponder(
-        MasterFramework:MousePressResponder(
-            dividerRect,
-            function(_, x)
-                dividerRect:SetDecorations({ MasterFramework.color.pressColor })
-                isDragging = true
-                dragStartX = x
-                dividerStartX = dividerX
-                return true
-            end,
-            function(_, x)
-                local dx = x - dragStartX
-                dividerX = dividerStartX + dx
-                -- dividerX = math_max(math.min((minWidth() - dividerWidth()) / 2, dragStartX + dx), width - math.min((minWidth() - dividerWidth()) / 2))
-                verticalSplitDividerXCache[key] = dividerX / previousScale
-                split:NeedsLayout()
-            end,
-            function()
-                dividerRect:SetDecorations({ hoverColor })
-                isDragging = false
-            end
-        ),
-        function(isOver)
-            hoverColor = isOver and MasterFramework.color.selectedColor or MasterFramework.color.hoverColor
-            if not isDragging then
-                dividerRect:SetDecorations({ hoverColor })
-            end
-        end
-    )
-
-    function split:Layout(availableWidth, availableHeight)
-        self:RegisterDrawingGroup()
-        if previousScale ~= MasterFramework.combinedScaleFactor then
-            dividerX = dividerX / previousScale * MasterFramework.combinedScaleFactor
-            previousScale = MasterFramework.combinedScaleFactor
-        end
-
-        dividerX = math.min(math_max((minWidth() - dividerWidth()) / 2, dividerX), availableWidth - (minWidth() - dividerWidth()) / 2)
-
-        if availableWidth < minWidth() then
-            availableWidth = minWidth()
-            dividerX = math.floor((availableWidth - dividerWidth()) / 2)
-        end
-
-        local leftWidth, leftHeight = left:Layout(dividerX, availableHeight)
-        local rightWidth, rightHeight = right:Layout(availableWidth - (leftWidth + dividerWidth()), availableHeight)
-
-        
-        left._split_cachedHeight = leftHeight
-        
-        right._split_xOffset = leftWidth + dividerWidth()
-        right._split_cachedHeight = rightHeight
-        
-        width = leftWidth + dividerWidth() + rightWidth
-        height = math_max(leftHeight, rightHeight)
-        
-        divider:Layout(dividerWidth(), height)
-
-        return width, height
-    end
-    function split:Position(x, y)
-        left:Position(x, y + (height - left._split_cachedHeight) * yAnchor)
-        right:Position(x + right._split_xOffset, y + (height - right._split_cachedHeight) * yAnchor)
-        divider:Position(x + dividerX, y)
-    end
-
-    return split
-end
-
-local function TabBar(options)
-    local box = MasterFramework:Box(MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)))
-    local body = MasterFramework:MarginAroundRect(
-        box,
-        MasterFramework:AutoScalingDimension(0),
-        MasterFramework:AutoScalingDimension(20),
-        MasterFramework:AutoScalingDimension(0),
-        MasterFramework:AutoScalingDimension(20)
-    )
-
-    local buttons = table.imap(options, function(index, tab)
-        local titleText = MasterFramework:Text(tab.title)
-        local button = MasterFramework:Button(
-            titleText,
-            function()
-                tabBar:Select(index)
-            end
-        )
-
-        button.titleText = titleText
-        return button
-    end)
-
-    local tabBar
-    tabBar = MasterFramework:VerticalHungryStack(
-        MasterFramework:HorizontalStack(buttons, MasterFramework:AutoScalingDimension(8), 1),
-        TakeAvailableWidth(body),
-        MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)),
-        0.5
-    )
-
-    local lastSelectedButton
-    function tabBar:Select(index)
-        if not buttons[index] then return end
-        if lastSelectedButton then
-            lastSelectedButton.titleText:SetBaseColor(MasterFramework:Color(1, 1, 1, 1))
-        end
-        lastSelectedButton = buttons[index]
-        buttons[index].titleText:SetBaseColor(MasterFramework:Color(0.3, 0.6, 1, 1))
-        box:SetChild(options[index].display)
-    end
-
-    tabBar:Select(1)
-
-    return tabBar
 end
 
 local widgetPathToWidgetName = {}
