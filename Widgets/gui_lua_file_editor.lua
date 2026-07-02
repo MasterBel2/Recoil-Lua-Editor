@@ -332,6 +332,7 @@ local lastSelectedSearchResult
 local searchResults = {}
 
 local editedFiles = {}
+local fileScrollIndices = {}
 
 local folderMenus = {}
 local fileButtons = {}
@@ -369,10 +370,14 @@ local function SelectFile(path, _fileName, targetCharacterIndex)
         textEntry.text:SetString(editedFiles[path] or VFS.LoadFile(path))
         if textEntry.text.availableWidth and textEntry.text.availableHeight then
             textEntry.text:Layout(textEntry.text.availableWidth, textEntry.text.availableHeight)
+            
+            targetCharacterIndex = targetCharacterIndex or fileScrollIndices[path]
             if targetCharacterIndex then
                 local lineCount = #textEntry.text:GetDisplayString():sub(1, textEntry.text:RawIndexToDisplayIndex(targetCharacterIndex)):lines_MasterFramework()
                 local offset = (lineCount - 10) * textEntry.text._readOnly_font:ScaledSize()
                 codeScrollContainer.viewport:SetYOffset(math.max(0, offset))
+            else
+                codeScrollContainer.viewport:SetYOffset(0)
             end
             fileNameDisplay.visual:SetString(showFullFilePath and path or fileName)
             ConfigureErrorHighlight()
@@ -432,13 +437,15 @@ end
 
 function widget:GetConfigData()
     return {
+        fileScrollIndices = fileScrollIndices,
         editedFiles = editedFiles,
         filePath = filePath,
         verticalSplitDividerXCache = verticalSplitDividerXCache
     }
 end
 function widget:SetConfigData(data)
-    editedFiles = data.editedFiles
+    fileScrollIndices = data.fileScrollIndices or {}
+    editedFiles = data.editedFiles or {}
     filePath = data.filePath
     verticalSplitDividerXCache = data.verticalSplitDividerXCache or {}
     for path, _ in pairs(editedFiles) do
@@ -1214,6 +1221,18 @@ function widget:Initialize()
     if filePath then
         SelectFile(filePath)
         RevealPath(filePath)
+    end
+
+    -- Capture this after we do our first SelectFile so we don't overwrite the loaded value until the UI is properly configured.
+    local codeScrollContainer_viewport_SetYOffset = codeScrollContainer.viewport.SetYOffset
+    local indexHighlightID
+    function codeScrollContainer.viewport:SetYOffset(newYOffset)
+        codeScrollContainer_viewport_SetYOffset(self, newYOffset)
+        local _, yOffset = self:GetOffsets()
+        local x, y = textEntry.text:CachedPositionTranslatedToGlobalContext()
+        if not x or not y then return end
+        local _, height = textEntry.text:Size()
+        fileScrollIndices[filePath] = textEntry.text:CoordinateToCharacterDisplayIndex(x, y + height - yOffset)
     end
 
     local buffer = Spring.GetConsoleBuffer()
