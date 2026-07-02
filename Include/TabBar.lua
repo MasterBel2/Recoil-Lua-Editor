@@ -21,6 +21,8 @@ function TabBar(options)
         button.titleText = titleText
         return button
     end)
+    
+    local currentIndex = 1
 
     tabBar = MasterFramework:VerticalHungryStack(
         MasterFramework:HorizontalStack(buttons, MasterFramework:AutoScalingDimension(8), 1),
@@ -31,6 +33,7 @@ function TabBar(options)
 
     local lastSelectedButton
     function tabBar:Select(index)
+        currentIndex = index
         if not buttons[index] then return end
         if lastSelectedButton then
             lastSelectedButton.titleText:SetBaseColor(MasterFramework:Color(1, 1, 1, 1))
@@ -39,8 +42,11 @@ function TabBar(options)
         buttons[index].titleText:SetBaseColor(MasterFramework:Color(0.3, 0.6, 1, 1))
         box:SetChild(options[index].display)
     end
+    function tabBar:GetSelectedIndex()
+        return currentIndex
+    end
 
-    tabBar:Select(1)
+    tabBar:Select(currentIndex)
 
     return tabBar
 end

@@ -44,6 +44,9 @@ local fileBrowserStackContents
 local editedFileColor
 local savedFileColor
 
+local debugInfoText
+local profileText
+
 local errorHighlightColor
 local searchHighlightColor
 local selectedSearchHighlightColor
@@ -227,9 +230,8 @@ local function Editor()
         0
     )
 
-    function editor:GetFilePath()
-        return filePath
-    end
+    function editor:GetFilePath() return filePath end
+    function editor:GetFileName() return fileName end
 
     function editor:Save()
         if not filePath then return end
@@ -578,6 +580,27 @@ function widget:Update()
         return a.name > b.name
     end)
     errorStack:SetMembers(table.imap(errors, function(_, x) return x.display end))
+    
+    if tabBar:GetSelectedIndex() == 4 and fileNameToWidgetName[mainEditor:GetFileName()] then
+        local index = widgetHandler.orderList[fileNameToWidgetName[mainEditor:GetFileName()]]
+        local widget = widgetHandler.widgets[index]
+        if widget then
+            local success, value = pcall(widget.DebugInfo, widget)
+            if success and type(value) == "table" then
+                debugInfoText:SetString(MasterFramework.debugDescriptionString(value, "Debug Info for widget \"" .. widget.whInfo.name .. "\""))
+            else
+                debugInfoText:SetString("Error in widget:DebugInfo(): " .. (value or "nil"))
+                widget.DebugInfo = nil
+            end
+        end        
+    elseif tabBar:GetSelectedIndex() == 5 then
+        local statsArray = table.mapToArray(MasterFramework.stats, function(key, value)
+            return "\255\050\100\255" .. key .. " - \255\255\255\255".. value
+        end)
+    
+        table.sort(statsArray)
+        profileText:SetString(table.concat(statsArray, "\n"))
+    end
 end
 
 function widget:Initialize()
@@ -615,6 +638,9 @@ function widget:Initialize()
 
     editedFileColor = MasterFramework:Color(1, 0.6, 0.3, 1)
     savedFileColor = MasterFramework:Color(1, 1, 1, 1)
+    
+    debugInfoText = MasterFramework:WrappingText("")
+    profileText = MasterFramework:WrappingText("")
 
     errorStack = MasterFramework:VerticalStack({}, MasterFramework:AutoScalingDimension(2), 0)
 
@@ -622,8 +648,8 @@ function widget:Initialize()
         { title = "Files", display = MasterFramework:VerticalScrollContainer(UIFolderMenu(LUAUI_DIRNAME)) },
         { title = "Search", display = MasterFramework:VerticalHungryStack(searchEntry, MasterFramework:VerticalScrollContainer(searchStack), MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)), 0) },
         { title = "Errors", display = errorStack },
-        --{ title = "Debug", display =  },
-        --{ title = "Profile", display =  }
+        { title = "Debug", display = debugInfoText },
+        { title = "Profile", display = profileText }
     })
 
     mainEditor = Editor()
