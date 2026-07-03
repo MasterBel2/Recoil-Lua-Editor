@@ -65,6 +65,12 @@ local errors = {}
 local errorDisplays = {}
 local errorHighlightIDs = {}
 
+local widgetPathToWidgetName = {}
+local widgetNameToFileName = {}
+local fileNameToWidgetName = {}
+local runningWidgets = {}
+local messages = {}
+
 local fileNamePattern = "([%w%s%._&-]+)/?$"
 
 -- Only use these to cache between SetConfigData and Initialize
@@ -417,12 +423,6 @@ local function UIFolderMenu(path)
 
     return folderMenu
 end
-
-local widgetPathToWidgetName = {}
-local widgetNameToFileName = {}
-local fileNameToWidgetName = {}
-local runningWidgets = {}
-local messages = {}
 
 function ErrorDisplay(error)
     local text = MasterFramework:WrappingText("", MasterFramework.color.red)
