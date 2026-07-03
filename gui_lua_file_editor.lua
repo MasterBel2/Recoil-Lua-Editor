@@ -141,13 +141,46 @@ local function RevealPath(path)
     end
 end
 
+local function OpenCorrespondingTestFile(path, ctrl)
+    local rootWidgetFileName = path:match("LuaUI/Widgets/([^/]+%.lua)")
+    local testFilePath
+    local testFileSubDir
+    if rootWidgetFileName then
+        testFileSubDir = "LuaUI/Widget Tests/"
+        testFilePath = "LuaUI/Widget Tests/test_" .. rootWidgetFileName
+    else
+        local widgetDirectory, fileSubdirectory, fileName = path:match("(LuaUI/Widgets/[^/]+/)(.-)([^/]+%.lua)")
+        if widgetDirectory and fileSubdirectory and fileName then
+            testFileSubDir = widgetDirectory .. "Tests/" .. fileSubdirectory
+            testFilePath = testFileSubDir .. "test_" .. fileName
+        end
+    end
+    if testFilePath then
+        if not VFS.FileExists(testFilePath) then
+            Spring.CreateDir(testFileSubDir)
+            local file = io.open(testFilePath, "w")
+            file:write("return {\n\ttargetFileName = \"" .. path .. "\",\n\ttest_example = function()\n\t\terror(\"Test failure!\")\n\tend,\n}")
+            file:close()
+        end
+
+        RevealPath(testFilePath)
+        if ctrl then
+            secondaryEditor:SelectFile(testFilePath)
+        else
+            mainEditor:SelectFile(testFilePath)
+        end
+    else
+        Spring.Echo("No configured test directory for files at this location!")
+    end
+end
+
 local function MarkFileEdited(path, isEdited)
     if not path or (editedFiles[path] and isEdited) or ((not editedFiles[path]) and (not isEdited)) then
         return
     end
     local pattern = "(.+/)[%w%s%._&-]+/?$"
     
-    fileButtons[path].visual:SetBaseColor(isEdited and editedFileColor or savedFileColor)
+    fileButtons[path].text:SetBaseColor(isEdited and editedFileColor or savedFileColor)
 
     local change = isEdited and 1 or -1
 
@@ -189,6 +222,8 @@ local function Editor()
                 widgetHandler:DisableWidget(widgetName)
                 widgetHandler:EnableWidget(widgetName)
             end
+        elseif key == 0x74 and mods.ctrl then -- Ctrl+T
+            OpenCorrespondingTestFile(filePath, editor == mainEditor)
         else
             textEntry_KeyPress(self, key, mods, isRepeat)
         end
@@ -325,18 +360,26 @@ end
 
 local function UIFileButton(path)
     local _fileName = path:match(fileNamePattern)
-    local button = MasterFramework:Button(
-        MasterFramework:Text(_fileName, editedFiles[path] and editedFileColor or savedFileColor), 
-        function()
-            local _, ctrl = Spring.GetModKeyState()
-            if ctrl then
-                secondaryEditor:SelectFile(path, _fileName)
-            else
-                mainEditor:SelectFile(path, _fileName)
+    local text = MasterFramework:Text(_fileName, editedFiles[path] and editedFileColor or savedFileColor)
+    local button = MasterFramework:RightClickMenuAnchor(
+        MasterFramework:Button(
+            text,
+            function()
+                local _, ctrl = Spring.GetModKeyState()
+                if ctrl then
+                    secondaryEditor:SelectFile(path, _fileName)
+                else
+                    mainEditor:SelectFile(path, _fileName)
+                end
             end
-        end
+        ),
+        {
+            { title = "Open Tests", action = function() local _, ctrl = Spring.GetModKeyState(); OpenCorrespondingTestFile(path, ctrl) end, enabled = true },
+        },
+        path
     )
-
+    
+    button.text = text
     fileButtons[path] = button
 
     function button:Deregister()
