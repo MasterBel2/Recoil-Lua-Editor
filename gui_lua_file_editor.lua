@@ -333,7 +333,7 @@ local function Editor()
         Search()
     end)
 
-    editor._textEntry = textEntry
+    editor.textEntry = textEntry
 
     return editor
 end
