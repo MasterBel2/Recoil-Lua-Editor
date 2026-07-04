@@ -77,6 +77,17 @@ local fileNamePattern = "([%w%s%._&-]+)/?$"
 local _init_mainEditorFilePath
 local _init_secondaryEditorFilePath
 
+local function FileDir(filePath)
+    return filePath:match("(.+/)[^/]+")
+end
+
+local function RefreshDirIfVisible(dir)
+    if folderMenus[dir] then
+        folderMenus[dir]:HideChildren()
+        folderMenus[dir]:ShowChildren()
+    end
+end
+
 local function CorrespondingTestFile(path)
     local rootWidgetFileName = path:match("LuaUI/Widgets/([^/]+%.lua)")
     if rootWidgetFileName then
@@ -404,6 +415,41 @@ local function UIFileButton(path)
             { title = "Run Tests (Ctrl+T)", action = function()
                 local _, testFilePath = CorrespondingTestFile(path)
                 RunTestsAtPath(path)
+            end, enabled = true },
+            { title = "Rename/Move", action = function()
+                local pathEntry = MasterFramework:TextEntry(path)
+                MasterFramework:Dialog(
+                    "Rename/Move",
+                    { pathEntry },
+                    {
+                        { name = "Confirm", color = MasterFramework.color.green, 
+                            action = function()
+                                local newPath = pathEntry.text:GetRawString()
+                                if VFS.FileExists(newPath) then error("File already exists!") end
+                                local fileContents = VFS.LoadFile(path)
+                                local file = io.open(newPath, "w")
+                                file:write(fileContents)
+                                file:close()
+                                os.remove(path)
+                                editedFiles[newPath] = editedFiles[path]
+                                editedFiles[path] = nil
+                                                                
+                                if mainEditor:GetFilePath() == path then
+                                    mainEditor:SelectFile(newPath)
+                                end
+                                if secondaryEditor:GetFilePath() == path then
+                                    secondaryEditor:SelectFile(newPath)
+                                end
+                                
+                                RefreshDirIfVisible(FileDir(path))
+                                RefreshDirIfVisible(FileDir(newPath))
+                                
+                                RevealPath(newPath)
+                            end 
+                        },
+                        { name = "Cancel", color = MasterFramework.color.red, action = function() end }
+                    }
+                ):PresentAbove(key) 
             end, enabled = true },
         },
         path
