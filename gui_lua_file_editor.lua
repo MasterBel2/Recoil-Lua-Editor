@@ -133,7 +133,7 @@ local function Search()
     while searchBegin < searchee:len() do
         local start, _end = searchee:find(searchTerm, searchBegin)
         if start and _end then
-            table.insert(searchResults, { 
+            table.insert(searchResults, {
                 filePath = mainEditor:GetFilePath(), 
                 start = start, 
                 _end = _end, 
@@ -301,7 +301,7 @@ local function Editor()
             MasterFramework:AutoScalingDimension(8), 0.5
         ),
         TakeAvailableWidth(TakeAvailableHeight(codeScrollContainer)),
-        MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)), 
+        MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)),
         0
     )
 

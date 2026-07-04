@@ -71,7 +71,6 @@ function VerticalSplit(left, right, yAnchor, key, proportionallyResize)
 
         local leftWidth, leftHeight = left:Layout(dividerX, availableHeight)
         local rightWidth, rightHeight = right:Layout(availableWidth - (leftWidth + dividerWidth()), availableHeight)
-
         
         left._split_cachedHeight = leftHeight
         
