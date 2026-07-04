@@ -182,7 +182,8 @@ local function TestsInFile(path)
 
         widgetHandler = {
             AddAction = function() end, RemoveAction = function() end, OwnText = function() return true end, DisownText = function() end,
-            RegisterGlobal = function() end, DeregisterGlobal = function() end
+            RegisterGlobal = function() end, DeregisterGlobal = function() end,
+            knownWidgets = {},
         },
 
         GL = table.copy(GL),
@@ -267,7 +268,8 @@ local function RunTests(testSet, results)
     
             widgetHandler = { 
                 AddAction = function() end, RemoveAction = function() end, OwnText = function() return true end, DisownText = function() end,
-                RegisterGlobal = function() end, DeregisterGlobal = function() end
+                RegisterGlobal = function() end, DeregisterGlobal = function() end,
+                knownWidgets = {},
             },
             
             GL = table.copy(GL),
