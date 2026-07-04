@@ -77,6 +77,32 @@ local fileNamePattern = "([%w%s%._&-]+)/?$"
 local _init_mainEditorFilePath
 local _init_secondaryEditorFilePath
 
+local function CorrespondingTestFile(path)
+    local rootWidgetFileName = path:match("LuaUI/Widgets/([^/]+%.lua)")
+    if rootWidgetFileName then
+        return "LuaUI/Widget Tests/", "LuaUI/Widget Tests/test_" .. rootWidgetFileName
+    else
+        local widgetDirectory, fileSubdirectory, fileName = path:match("(LuaUI/Widgets/[^/]+/)(.-)([^/]+%.lua)")
+        if widgetDirectory and fileSubdirectory and fileName then
+            testFileSubDir = widgetDirectory .. "Tests/" .. fileSubdirectory
+            return testFileSubDir, testFileSubDir .. "test_" .. fileName
+        end
+    end
+end
+
+local function RunTestsAtPath(path)
+    tabBar:Select(6)
+    local _, testFilePath = CorrespondingTestFile(path)
+    local _Spring_Echo = Spring.Echo
+    local testOutput = {}
+    function Spring.Echo(message)
+        testOutput[#testOutput + 1] = message
+    end
+    WG.Tests.RunAllTestsInFile(testFilePath, { testsFailed = 0, testsPassed = 0 })
+    Spring.Echo = _Spring_Echo
+    testResultText:SetString(table.concat(testOutput, "\n"))
+end
+
 local function Search()
     local searchTerm = searchEntry.text:GetRawString()
 
@@ -142,19 +168,8 @@ local function RevealPath(path)
 end
 
 local function OpenCorrespondingTestFile(path, ctrl)
-    local rootWidgetFileName = path:match("LuaUI/Widgets/([^/]+%.lua)")
-    local testFilePath
-    local testFileSubDir
-    if rootWidgetFileName then
-        testFileSubDir = "LuaUI/Widget Tests/"
-        testFilePath = "LuaUI/Widget Tests/test_" .. rootWidgetFileName
-    else
-        local widgetDirectory, fileSubdirectory, fileName = path:match("(LuaUI/Widgets/[^/]+/)(.-)([^/]+%.lua)")
-        if widgetDirectory and fileSubdirectory and fileName then
-            testFileSubDir = widgetDirectory .. "Tests/" .. fileSubdirectory
-            testFilePath = testFileSubDir .. "test_" .. fileName
-        end
-    end
+    local testFileSubDir, testFilePath = CorrespondingTestFile(path)
+
     if testFilePath then
         if not VFS.FileExists(testFilePath) then
             Spring.CreateDir(testFileSubDir)
@@ -223,7 +238,11 @@ local function Editor()
                 widgetHandler:EnableWidget(widgetName)
             end
         elseif key == 0x74 and mods.ctrl then -- Ctrl+T
-            OpenCorrespondingTestFile(filePath, editor == mainEditor)
+            if mods.shift then
+                OpenCorrespondingTestFile(filePath, editor == mainEditor)
+            else
+                RunTestsAtPath(filePath)
+            end
         else
             textEntry_KeyPress(self, key, mods, isRepeat)
         end
@@ -374,7 +393,14 @@ local function UIFileButton(path)
             end
         ),
         {
-            { title = "Open Tests", action = function() local _, ctrl = Spring.GetModKeyState(); OpenCorrespondingTestFile(path, ctrl) end, enabled = true },
+            { title = "Open Tests (Ctrl+Shift+T)", action = function() 
+                local _, ctrl = Spring.GetModKeyState()
+                OpenCorrespondingTestFile(path, ctrl)
+            end, enabled = true },
+            { title = "Run Tests (Ctrl+T)", action = function()
+                local _, testFilePath = CorrespondingTestFile(path)
+                RunTestsAtPath(path)
+            end, enabled = true },
         },
         path
     )
@@ -684,15 +710,17 @@ function widget:Initialize()
     
     debugInfoText = MasterFramework:WrappingText("")
     profileText = MasterFramework:WrappingText("")
+    testResultText = MasterFramework:WrappingText("")
 
     errorStack = MasterFramework:VerticalStack({}, MasterFramework:AutoScalingDimension(2), 0)
 
     tabBar = TabBar({
         { title = "Files", display = MasterFramework:VerticalScrollContainer(UIFolderMenu(LUAUI_DIRNAME)) },
         { title = "Search", display = MasterFramework:VerticalHungryStack(searchEntry, MasterFramework:VerticalScrollContainer(searchStack), MasterFramework:Rect(MasterFramework:AutoScalingDimension(0), MasterFramework:AutoScalingDimension(0)), 0) },
-        { title = "Errors", display = errorStack },
-        { title = "Debug", display = debugInfoText },
-        { title = "Profile", display = profileText }
+        { title = "Errors", display = MasterFramework:VerticalScrollContainer(errorStack) },
+        { title = "Debug", display = MasterFramework:VerticalScrollContainer(debugInfoText) },
+        { title = "Profile", display = MasterFramework:VerticalScrollContainer(profileText) },
+        { title = "Test Results", display = MasterFramework:VerticalScrollContainer(testResultText) },
     })
 
     mainEditor = Editor()

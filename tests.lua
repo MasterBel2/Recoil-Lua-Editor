@@ -469,3 +469,5 @@ function widget:TextCommand(command)
 
     return true
 end
+
+WG.Tests = { RunAllTestsInFile = RunAllTestsInFile }
