@@ -643,18 +643,18 @@ end
 ------------------------------------------------------------------------------------------------------------
 
 function widget:Update()
-    local errors = {}
-    for fileName, pathErrorDisplays in pairs(errorDisplays) do
-        for i = 1, #pathErrorDisplays do
-            errors[#errors + 1] = { name = fileName, display = pathErrorDisplays[i] }
+    if tabBar:GetSelectedIndex() == 3 then
+        local errors = {}
+        for fileName, pathErrorDisplays in pairs(errorDisplays) do
+            for i = 1, #pathErrorDisplays do
+                errors[#errors + 1] = { name = fileName, display = pathErrorDisplays[i] }
+            end
         end
-    end
-    table.sort(errors, function(a, b)
-        return a.name > b.name
-    end)
-    errorStack:SetMembers(table.imap(errors, function(_, x) return x.display end))
-    
-    if tabBar:GetSelectedIndex() == 4 and fileNameToWidgetName[mainEditor:GetFileName()] then
+        table.sort(errors, function(a, b)
+            return a.name > b.name
+        end)
+        errorStack:SetMembers(table.imap(errors, function(_, x) return x.display end))
+    elseif tabBar:GetSelectedIndex() == 4 and fileNameToWidgetName[mainEditor:GetFileName()] then
         local index = widgetHandler.orderList[fileNameToWidgetName[mainEditor:GetFileName()]]
         local widget = widgetHandler.widgets[index]
         if widget then
