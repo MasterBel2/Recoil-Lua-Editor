@@ -501,8 +501,35 @@ local function UIFolderMenu(path)
 
         registeredChildren = nil
     end
+    local menu = MasterFramework:RightClickMenuAnchor(title, {
+        { title = "New File", action = function()
+            local fileNameEntry = MasterFramework:TextEntry("", "Untitled.lua")
+            MasterFramework:Dialog(
+                "New File",
+                { fileNameEntry },
+                {
+                    { name = "Confirm", color = MasterFramework.color.green, 
+                        action = function()
+                            local filePath = path
+                            if path:sub(path:len(), path:len()) ~= "/" then
+                                filePath = filePath .. "/"
+                            end
+                            filePath = filePath .. fileNameEntry.text:GetRawString()
+                            
+                            local file = io.open(filePath, "w")
+                            file:close()
+                            
+                            RefreshDirIfVisible(path)
+                            folderMenu:ShowChildren()
+                        end 
+                    },
+                    { name = "Cancel", color = MasterFramework.color.red, action = function() end }
+                }
+            ):PresentAbove(key)
+        end, enabled = true }
+    }, path)
 
-    local folderRow = MasterFramework:HorizontalStack({ checkBox, title }, MasterFramework:AutoScalingDimension(8), 0.5)
+    local folderRow = MasterFramework:HorizontalStack({ checkBox, menu }, MasterFramework:AutoScalingDimension(8), 0.5)
 
     folderMenu = MasterFramework:VerticalStack({ folderRow }, spacing, 0)
 
