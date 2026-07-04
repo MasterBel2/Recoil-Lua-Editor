@@ -449,7 +449,19 @@ local function UIFileButton(path)
                         },
                         { name = "Cancel", color = MasterFramework.color.red, action = function() end }
                     }
-                ):PresentAbove(key) 
+                ):PresentAbove(key)
+            end, enabled = true },
+            { title = "Delete", action = function()
+                local pathEntry = MasterFramework:TextEntry(path)
+                MasterFramework:ConfirmationDialog(
+                    "Delete file?",
+                    "Delete",
+                    MasterFramework.color.red,
+                    function()
+                        os.remove(path)
+                        RefreshDirIfVisible(FileDir(path))
+                    end
+                ):PresentAbove(key)
             end, enabled = true },
         },
         path
