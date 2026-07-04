@@ -190,24 +190,28 @@ local function OpenCorrespondingTestFile(path, ctrl)
 end
 
 local function MarkFileEdited(path, isEdited)
-    if not path or (editedFiles[path] and isEdited) or ((not editedFiles[path]) and (not isEdited)) then
+    if (not path) or (editedFiles[path] and isEdited) or ((not editedFiles[path]) and (not isEdited)) then
         return
     end
     local pattern = "(.+/)[%w%s%._&-]+/?$"
     
-    fileButtons[path].text:SetBaseColor(isEdited and editedFileColor or savedFileColor)
+    if fileButtons[path] then
+        fileButtons[path].text:SetBaseColor(isEdited and editedFileColor or savedFileColor)
+    end
 
     local change = isEdited and 1 or -1
 
     local trimmedPath = path:match(pattern)
     while trimmedPath and trimmedPath ~= "" do
         local menu = folderMenus[trimmedPath]
-        menu.editedSubfileCount = menu.editedSubfileCount + change
-        if isEdited then 
-            menu.title:SetBaseColor(editedFileColor)
-        elseif menu.editedSubfileCount == 0 then
-            menu.title:SetBaseColor(savedFileColor)
-        end 
+        if menu then
+            menu.editedSubfileCount = menu.editedSubfileCount + change
+            if isEdited then 
+                menu.title:SetBaseColor(editedFileColor)
+            elseif menu.editedSubfileCount == 0 then
+                menu.title:SetBaseColor(savedFileColor)
+            end
+        end
         trimmedPath = trimmedPath:match(pattern)
     end
 end
