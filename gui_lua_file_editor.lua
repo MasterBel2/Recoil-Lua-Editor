@@ -106,8 +106,8 @@ local function RunTestsAtPath(path)
     local _, testFilePath = CorrespondingTestFile(path)
     local _Spring_Echo = Spring.Echo
     local testOutput = {}
-    function Spring.Echo(message)
-        testOutput[#testOutput + 1] = message
+    function Spring.Echo(...)
+        testOutput[#testOutput + 1] = table.concat({...}, ", ")
     end
     WG.Tests.RunAllTestsInFile(testFilePath, { testsFailed = 0, testsPassed = 0 })
     Spring.Echo = _Spring_Echo
